@@ -74,6 +74,10 @@ pub enum Command {
         /// Enable fast mode for large files (samples first, middle, and last 100MB)
         #[arg(short = 'f', long = "fast")]
         fast: bool,
+        
+        /// Output format (standard or hashdeep)
+        #[arg(long = "format", value_name = "FORMAT", default_value = "standard")]
+        format: String,
     },
     
     /// Verify directory against hash database
@@ -231,12 +235,13 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast }) => {
+            Some(Command::Scan { directory, algorithm, output, parallel, fast, format }) => {
                 assert_eq!(directory, PathBuf::from("/path/to/dir"));
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
                 assert_eq!(parallel, false);
                 assert_eq!(fast, false);
+                assert_eq!(format, "standard");
             }
             _ => panic!("Expected Scan command"),
         }
@@ -248,12 +253,13 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast }) => {
+            Some(Command::Scan { directory, algorithm, output, parallel, fast, format }) => {
                 assert_eq!(directory, PathBuf::from("/path/to/dir"));
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
                 assert_eq!(parallel, true);
                 assert_eq!(fast, false);
+                assert_eq!(format, "standard");
             }
             _ => panic!("Expected Scan command"),
         }
@@ -265,12 +271,13 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast }) => {
+            Some(Command::Scan { directory, algorithm, output, parallel, fast, format }) => {
                 assert_eq!(directory, PathBuf::from("/path/to/dir"));
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
                 assert_eq!(parallel, true);
                 assert_eq!(fast, false);
+                assert_eq!(format, "standard");
             }
             _ => panic!("Expected Scan command"),
         }
@@ -447,9 +454,10 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { algorithm, fast, .. }) => {
+            Some(Command::Scan { algorithm, fast, format, .. }) => {
                 assert_eq!(algorithm, "sha256"); // default algorithm
                 assert_eq!(fast, false); // default fast mode
+                assert_eq!(format, "standard"); // default format
             }
             _ => panic!("Expected Scan command"),
         }
@@ -461,12 +469,13 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast }) => {
+            Some(Command::Scan { directory, algorithm, output, parallel, fast, format }) => {
                 assert_eq!(directory, PathBuf::from("/path/to/dir"));
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
                 assert_eq!(parallel, false);
                 assert_eq!(fast, true);
+                assert_eq!(format, "standard");
             }
             _ => panic!("Expected Scan command"),
         }
@@ -478,12 +487,13 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast }) => {
+            Some(Command::Scan { directory, algorithm, output, parallel, fast, format }) => {
                 assert_eq!(directory, PathBuf::from("/path/to/dir"));
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
                 assert_eq!(parallel, false);
                 assert_eq!(fast, true);
+                assert_eq!(format, "standard");
             }
             _ => panic!("Expected Scan command"),
         }
@@ -495,12 +505,13 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast }) => {
+            Some(Command::Scan { directory, algorithm, output, parallel, fast, format }) => {
                 assert_eq!(directory, PathBuf::from("/path/to/dir"));
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
                 assert_eq!(parallel, true);
                 assert_eq!(fast, true);
+                assert_eq!(format, "standard");
             }
             _ => panic!("Expected Scan command"),
         }

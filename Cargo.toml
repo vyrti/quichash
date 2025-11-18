@@ -18,6 +18,7 @@ blake3 = "1.8"
 rayon = "1.11"
 indicatif = "0.17"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+ignore = "0.4"
 
 [dev-dependencies]
 hex = "0.4"

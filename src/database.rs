@@ -17,10 +17,57 @@ pub struct DatabaseEntry {
     pub fast_mode: bool,
 }
 
+/// Database format type
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DatabaseFormat {
+    /// Standard format: hash  algorithm  fast_mode  filepath
+    Standard,
+    /// Hashdeep format: size,hash1,hash2,...,filename
+    Hashdeep,
+}
+
 /// Handler for reading and writing hash database files
 pub struct DatabaseHandler;
 
 impl DatabaseHandler {
+    /// Detect the format of a database file by reading its first few lines
+    pub fn detect_format(path: &Path) -> Result<DatabaseFormat, HashUtilityError> {
+        let file = File::open(path).map_err(|e| {
+            HashUtilityError::from_io_error(e, "reading database", Some(path.to_path_buf()))
+        })?;
+        let reader = BufReader::new(file);
+        
+        for line_result in reader.lines().take(10) {
+            let line = line_result.map_err(|e| {
+                HashUtilityError::from_io_error(e, "reading database", Some(path.to_path_buf()))
+            })?;
+            
+            let trimmed = line.trim();
+            
+            // Skip empty lines
+            if trimmed.is_empty() {
+                continue;
+            }
+            
+            // Check for hashdeep header (starts with %)
+            if trimmed.starts_with('%') {
+                return Ok(DatabaseFormat::Hashdeep);
+            }
+            
+            // Check for hashdeep CSV format (contains commas)
+            if trimmed.contains(',') {
+                return Ok(DatabaseFormat::Hashdeep);
+            }
+            
+            // Check for standard format (contains two spaces)
+            if trimmed.contains("  ") {
+                return Ok(DatabaseFormat::Standard);
+            }
+        }
+        
+        // Default to standard format if we can't determine
+        Ok(DatabaseFormat::Standard)
+    }
     /// Write a single hash entry to the output writer
     /// Format: `<hash>  <algorithm>  <fast_mode>  <filepath>` (two spaces between fields)
     pub fn write_entry(
@@ -34,10 +81,50 @@ impl DatabaseHandler {
         writeln!(writer, "{}  {}  {}  {}", hash, algorithm, fast_str, path.display())
     }
     
+    /// Write hashdeep format header
+    /// Includes metadata and column definitions
+    pub fn write_hashdeep_header(
+        writer: &mut impl Write,
+        algorithms: &[String],
+    ) -> io::Result<()> {
+        writeln!(writer, "%%%% HASHDEEP-1.0")?;
+        writeln!(writer, "%%%% size,{},filename", algorithms.join(","))?;
+        writeln!(writer, "## Invoked from: hash utility")?;
+        writeln!(writer, "## $ hash scan --format hashdeep")?;
+        writeln!(writer, "##")?;
+        Ok(())
+    }
+    
+    /// Write a single entry in hashdeep format
+    /// Format: size,hash1,hash2,...,filename
+    pub fn write_hashdeep_entry(
+        writer: &mut impl Write,
+        size: u64,
+        hashes: &[String],
+        path: &Path,
+    ) -> io::Result<()> {
+        write!(writer, "{}", size)?;
+        for hash in hashes {
+            write!(writer, ",{}", hash)?;
+        }
+        writeln!(writer, ",{}", path.display())
+    }
+    
     /// Read a hash database file and parse it into a HashMap
     /// Maps file paths to their database entries (hash, algorithm, fast_mode)
     /// Malformed lines are skipped with a warning to stderr
+    /// Auto-detects format (standard or hashdeep)
     pub fn read_database(path: &Path) -> Result<HashMap<PathBuf, DatabaseEntry>, HashUtilityError> {
+        let format = Self::detect_format(path)?;
+        
+        match format {
+            DatabaseFormat::Standard => Self::read_standard_database(path),
+            DatabaseFormat::Hashdeep => Self::read_hashdeep_database(path),
+        }
+    }
+    
+    /// Read a standard format database file
+    fn read_standard_database(path: &Path) -> Result<HashMap<PathBuf, DatabaseEntry>, HashUtilityError> {
         let file = File::open(path).map_err(|e| {
             HashUtilityError::from_io_error(e, "reading database", Some(path.to_path_buf()))
         })?;
@@ -108,6 +195,161 @@ impl DatabaseHandler {
         }
         
         None
+    }
+    
+    /// Read a hashdeep format database file
+    /// Format: size,hash1,hash2,...,filename
+    /// Header lines start with %
+    /// Note: For files with multiple hashes, only the first hash is stored
+    fn read_hashdeep_database(path: &Path) -> Result<HashMap<PathBuf, DatabaseEntry>, HashUtilityError> {
+        let file = File::open(path).map_err(|e| {
+            HashUtilityError::from_io_error(e, "reading database", Some(path.to_path_buf()))
+        })?;
+        let reader = BufReader::new(file);
+        let mut database = HashMap::new();
+        let mut hash_algorithms = Vec::new();
+        
+        for (line_num, line_result) in reader.lines().enumerate() {
+            let line = line_result.map_err(|e| {
+                HashUtilityError::from_io_error(e, "reading database", Some(path.to_path_buf()))
+            })?;
+            
+            let trimmed = line.trim();
+            
+            // Skip empty lines
+            if trimmed.is_empty() {
+                continue;
+            }
+            
+            // Parse header lines
+            if trimmed.starts_with('%') {
+                // Extract algorithm information from header
+                // Format: %%%% HASHDEEP-1.0
+                // %%%% size,md5,sha256,filename
+                if trimmed.starts_with("%%%%") && trimmed.contains(',') {
+                    // Parse the algorithm list from header
+                    let header_parts: Vec<&str> = trimmed.split_whitespace().collect();
+                    if header_parts.len() >= 2 {
+                        let fields = header_parts[1];
+                        let field_list: Vec<&str> = fields.split(',').collect();
+                        // First field is size, last is filename, middle are hash algorithms
+                        if field_list.len() >= 3 {
+                            hash_algorithms = field_list[1..field_list.len()-1]
+                                .iter()
+                                .map(|s| s.to_string())
+                                .collect();
+                        }
+                    }
+                }
+                continue;
+            }
+            
+            // Parse data lines
+            match Self::parse_hashdeep_line(trimmed, &hash_algorithms) {
+                Some(entries) => {
+                    // Only use the first hash entry for each file
+                    // (hashdeep can have multiple hashes per file, but our verify engine expects one)
+                    if let Some((file_path, entry)) = entries.into_iter().next() {
+                        database.insert(file_path, entry);
+                    }
+                }
+                None => {
+                    eprintln!(
+                        "Warning: Skipping malformed line {} in hashdeep database {}: {}",
+                        line_num + 1,
+                        path.display(),
+                        trimmed
+                    );
+                }
+            }
+        }
+        
+        Ok(database)
+    }
+    
+    /// Parse a single hashdeep format line
+    /// Format: size,hash1,hash2,...,filename
+    /// Returns multiple entries (one per hash algorithm)
+    fn parse_hashdeep_line(line: &str, algorithms: &[String]) -> Option<Vec<(PathBuf, DatabaseEntry)>> {
+        let parts: Vec<&str> = line.split(',').collect();
+        
+        // Need at least: size, one hash, filename
+        if parts.len() < 3 {
+            return None;
+        }
+        
+        // First part is size (we don't use it currently)
+        let _size = parts[0].trim();
+        
+        // Last part is filename
+        let filename = parts[parts.len() - 1].trim();
+        if filename.is_empty() {
+            return None;
+        }
+        
+        let path = path_utils::parse_database_path(filename);
+        
+        // Middle parts are hashes
+        let hashes: Vec<&str> = parts[1..parts.len()-1]
+            .iter()
+            .map(|s| s.trim())
+            .collect();
+        
+        if hashes.is_empty() {
+            return None;
+        }
+        
+        let mut entries = Vec::new();
+        
+        // If we have algorithm names from header, use them
+        if !algorithms.is_empty() && algorithms.len() == hashes.len() {
+            for (i, hash) in hashes.iter().enumerate() {
+                if !hash.is_empty() {
+                    entries.push((
+                        path.clone(),
+                        DatabaseEntry {
+                            hash: hash.to_string(),
+                            algorithm: algorithms[i].clone(),
+                            fast_mode: false,
+                        }
+                    ));
+                }
+            }
+        } else {
+            // No header or mismatch - try to infer algorithm from hash length
+            for hash in hashes {
+                if !hash.is_empty() {
+                    let algorithm = Self::infer_algorithm_from_hash(hash);
+                    entries.push((
+                        path.clone(),
+                        DatabaseEntry {
+                            hash: hash.to_string(),
+                            algorithm,
+                            fast_mode: false,
+                        }
+                    ));
+                }
+            }
+        }
+        
+        if entries.is_empty() {
+            None
+        } else {
+            Some(entries)
+        }
+    }
+    
+    /// Infer hash algorithm from hash string length
+    fn infer_algorithm_from_hash(hash: &str) -> String {
+        match hash.len() {
+            32 => "md5".to_string(),
+            40 => "sha1".to_string(),
+            56 => "sha224".to_string(),
+            64 => "sha256".to_string(),
+            96 => "sha384".to_string(),
+            128 => "sha512".to_string(),
+            _ => "unknown".to_string(),
+        }
     }
 }
 

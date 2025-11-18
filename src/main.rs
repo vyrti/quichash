@@ -6,12 +6,14 @@ mod benchmark;
 mod database;
 mod path_utils;
 mod error;
+mod ignore_handler;
 
 use cli::{parse_args, Command};
 use hash::{HashComputer, HashRegistry};
 use scan::ScanEngine;
 use verify::VerifyEngine;
 use benchmark::BenchmarkEngine;
+use database::DatabaseFormat;
 use error::HashUtilityError;
 use std::process;
 
@@ -27,8 +29,8 @@ fn main() {
     
     // Dispatch to appropriate handler
     let result = match cli.command {
-        Some(Command::Scan { directory, algorithm, output, parallel, fast }) => {
-            handle_scan_command(&directory, &algorithm, &output, parallel, fast)
+        Some(Command::Scan { directory, algorithm, output, parallel, fast, format }) => {
+            handle_scan_command(&directory, &algorithm, &output, parallel, fast, &format)
         }
         Some(Command::Verify { database, directory }) => {
             handle_verify_command(&database, &directory)
@@ -133,8 +135,22 @@ fn handle_scan_command(
     output: &std::path::Path,
     parallel: bool,
     fast: bool,
+    format_str: &str,
 ) -> Result<(), HashUtilityError> {
-    let engine = ScanEngine::with_parallel(parallel).with_fast_mode(fast);
+    // Parse format string
+    let format = match format_str.to_lowercase().as_str() {
+        "standard" => DatabaseFormat::Standard,
+        "hashdeep" => DatabaseFormat::Hashdeep,
+        _ => {
+            return Err(HashUtilityError::InvalidArguments {
+                message: format!("Invalid format '{}'. Valid formats are: standard, hashdeep", format_str),
+            });
+        }
+    };
+    
+    let engine = ScanEngine::with_parallel(parallel)
+        .with_fast_mode(fast)
+        .with_format(format);
     
     // Scan directory and write database
     let _stats = engine.scan_directory(directory, algorithm, output)?;

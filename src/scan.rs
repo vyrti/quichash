@@ -5,6 +5,7 @@ use crate::hash::HashComputer;
 use crate::database::DatabaseHandler;
 use crate::path_utils;
 use crate::error::HashUtilityError;
+use crate::ignore_handler::IgnoreHandler;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -25,11 +26,15 @@ pub struct ScanStats {
     pub duration: Duration,
 }
 
+use crate::database::DatabaseFormat;
+
 /// Engine for scanning directories and generating hash databases
 pub struct ScanEngine {
     computer: HashComputer,
     parallel: bool,
     fast_mode: bool,
+    use_ignore: bool,
+    format: DatabaseFormat,
 }
 
 impl ScanEngine {
@@ -39,6 +44,8 @@ impl ScanEngine {
             computer: HashComputer::new(),
             parallel: false,
             fast_mode: false,
+            use_ignore: true,
+            format: DatabaseFormat::Standard,
         }
     }
     
@@ -48,12 +55,26 @@ impl ScanEngine {
             computer: HashComputer::new(),
             parallel,
             fast_mode: false,
+            use_ignore: true,
+            format: DatabaseFormat::Standard,
         }
     }
     
     /// Enable or disable fast mode for large file hashing
     pub fn with_fast_mode(mut self, fast_mode: bool) -> Self {
         self.fast_mode = fast_mode;
+        self
+    }
+    
+    /// Enable or disable .hashignore file support
+    pub fn with_ignore(mut self, use_ignore: bool) -> Self {
+        self.use_ignore = use_ignore;
+        self
+    }
+    
+    /// Set the output format
+    pub fn with_format(mut self, format: DatabaseFormat) -> Self {
+        self.format = format;
         self
     }
     
@@ -79,9 +100,12 @@ impl ScanEngine {
             HashUtilityError::from_io_error(e, "scanning directory", Some(root.to_path_buf()))
         })?;
         
+        // Canonicalize output path to exclude it from scan
+        let canonical_output = output.canonicalize().ok();
+        
         // Collect all files in the directory tree
         println!("Scanning directory: {}", root.display());
-        let files = self.collect_files(root)?;
+        let files = self.collect_files_with_exclusion(root, canonical_output.as_deref())?;
         println!("Found {} files to process", files.len());
         
         if self.fast_mode {
@@ -109,6 +133,14 @@ impl ScanEngine {
             HashUtilityError::from_io_error(e, "creating output file", Some(output.to_path_buf()))
         })?;
         let mut writer = BufWriter::new(output_file);
+        
+        // Write hashdeep header if using hashdeep format
+        if self.format == DatabaseFormat::Hashdeep {
+            DatabaseHandler::write_hashdeep_header(&mut writer, &[algorithm.to_string()])
+                .map_err(|e| {
+                    HashUtilityError::from_io_error(e, "writing hashdeep header", Some(output.to_path_buf()))
+                })?;
+        }
         
         // Track statistics
         let mut files_processed = 0;
@@ -147,24 +179,39 @@ impl ScanEngine {
                         Err(_) => file_path.clone(),
                     };
                     
+                    // Get file size for hashdeep format
+                    let file_size = fs::metadata(file_path)
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+                    
                     // Write hash entry to database with metadata
-                    if let Err(e) = DatabaseHandler::write_entry(
-                        &mut writer,
-                        &result.hash,
-                        algorithm,
-                        self.fast_mode,
-                        &path_to_write,
-                    ) {
+                    let write_result = match self.format {
+                        DatabaseFormat::Standard => {
+                            DatabaseHandler::write_entry(
+                                &mut writer,
+                                &result.hash,
+                                algorithm,
+                                self.fast_mode,
+                                &path_to_write,
+                            )
+                        }
+                        DatabaseFormat::Hashdeep => {
+                            DatabaseHandler::write_hashdeep_entry(
+                                &mut writer,
+                                file_size,
+                                &[result.hash.clone()],
+                                &path_to_write,
+                            )
+                        }
+                    };
+                    
+                    if let Err(e) = write_result {
                         eprintln!("Warning: Failed to write entry for {}: {}", 
                             file_path.display(), e);
                         files_failed += 1;
                     } else {
                         files_processed += 1;
-                        
-                        // Track file size
-                        if let Ok(metadata) = fs::metadata(file_path) {
-                            total_bytes += metadata.len();
-                        }
+                        total_bytes += file_size;
                     }
                 }
                 Err(e) => {
@@ -293,14 +340,39 @@ impl ScanEngine {
         })?;
         let mut writer = BufWriter::new(output_file);
         
+        // Write hashdeep header if using hashdeep format
+        if self.format == DatabaseFormat::Hashdeep {
+            if let Err(e) = DatabaseHandler::write_hashdeep_header(&mut writer, &[algorithm.to_string()]) {
+                eprintln!("Warning: Failed to write hashdeep header: {}", e);
+            }
+        }
+        
         for result in results.iter().flatten() {
-            if let Err(e) = DatabaseHandler::write_entry(
-                &mut writer,
-                &result.0,
-                algorithm,
-                fast_mode,
-                &result.1,
-            ) {
+            let write_result = match self.format {
+                DatabaseFormat::Standard => {
+                    DatabaseHandler::write_entry(
+                        &mut writer,
+                        &result.0,
+                        algorithm,
+                        fast_mode,
+                        &result.1,
+                    )
+                }
+                DatabaseFormat::Hashdeep => {
+                    // Get file size
+                    let file_size = fs::metadata(&result.1)
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+                    DatabaseHandler::write_hashdeep_entry(
+                        &mut writer,
+                        file_size,
+                        &[result.0.clone()],
+                        &result.1,
+                    )
+                }
+            };
+            
+            if let Err(e) = write_result {
                 eprintln!("Warning: Failed to write entry: {}", e);
             }
         }
@@ -346,16 +418,45 @@ impl ScanEngine {
     /// # Returns
     /// Vector of all file paths found
     fn collect_files(&self, root: &Path) -> Result<Vec<PathBuf>, ScanError> {
+        self.collect_files_with_exclusion(root, None)
+    }
+    
+    /// Recursively collect all regular files in a directory tree, excluding a specific file
+    /// 
+    /// # Arguments
+    /// * `root` - Root directory to traverse
+    /// * `exclude_file` - Optional file path to exclude from collection
+    /// 
+    /// # Returns
+    /// Vector of all file paths found
+    fn collect_files_with_exclusion(&self, root: &Path, exclude_file: Option<&Path>) -> Result<Vec<PathBuf>, ScanError> {
         let mut files = Vec::new();
-        self.collect_files_recursive(root, &mut files)?;
+        
+        // Load .hashignore patterns if enabled
+        let ignore_handler = if self.use_ignore {
+            match IgnoreHandler::new(root) {
+                Ok(handler) => Some(handler),
+                Err(e) => {
+                    eprintln!("Warning: Failed to load .hashignore: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        
+        self.collect_files_recursive(root, root, &mut files, ignore_handler.as_ref(), exclude_file)?;
         Ok(files)
     }
     
     /// Helper function for recursive file collection
     fn collect_files_recursive(
         &self,
+        root: &Path,
         dir: &Path,
         files: &mut Vec<PathBuf>,
+        ignore_handler: Option<&IgnoreHandler>,
+        exclude_file: Option<&Path>,
     ) -> Result<(), ScanError> {
         // Check if path exists and is accessible
         if !dir.exists() {
@@ -397,12 +498,35 @@ impl ScanEngine {
                 }
             };
             
+            let is_dir = metadata.is_dir();
+            
+            // Check if this is the excluded file
+            if let Some(exclude) = exclude_file {
+                if let (Ok(canonical_path), Ok(canonical_exclude)) = (path.canonicalize(), exclude.canonicalize()) {
+                    if canonical_path == canonical_exclude {
+                        // Skip the excluded file
+                        continue;
+                    }
+                }
+            }
+            
+            // Check if this path should be ignored
+            if let Some(handler) = ignore_handler {
+                // Get relative path for ignore matching
+                if let Ok(rel_path) = path.strip_prefix(root) {
+                    if handler.should_ignore(rel_path, is_dir) {
+                        // Skip ignored files and directories
+                        continue;
+                    }
+                }
+            }
+            
             if metadata.is_file() {
                 // Add regular files to the list
                 files.push(path);
-            } else if metadata.is_dir() {
+            } else if is_dir {
                 // Recursively process subdirectories
-                if let Err(e) = self.collect_files_recursive(&path, files) {
+                if let Err(e) = self.collect_files_recursive(root, &path, files, ignore_handler, exclude_file) {
                     // Log error but continue with other directories (Requirement 2.4)
                     eprintln!("Warning: Error processing directory {}: {}", path.display(), e);
                 }

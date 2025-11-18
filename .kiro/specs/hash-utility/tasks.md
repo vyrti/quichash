@@ -287,12 +287,12 @@
     - Verify that Base64 hashes can be verified correctly
     - _Requirements: 9.1_
 
-- [ ] 21. Add .hashignore file support
-  - [ ] 21.1 Add ignore dependency
+- [x] 21. Add .hashignore file support
+  - [x] 21.1 Add ignore dependency
     - Add ignore crate to Cargo.toml (same crate used by ripgrep)
     - _Requirements: 2.1_
   
-  - [ ] 21.2 Implement .hashignore parsing and filtering
+  - [x] 21.2 Implement .hashignore parsing and filtering
     - Create IgnoreHandler that reads .hashignore files
     - Support gitignore-style patterns (globs, negation, comments)
     - Integrate with ScanEngine to skip ignored files
@@ -305,21 +305,21 @@
     - Verify that negation patterns work correctly
     - _Requirements: 2.1_
 
-- [ ] 22. Add hashdeep format support
-  - [ ] 22.1 Implement hashdeep format reader
+- [x] 22. Add hashdeep format support
+  - [x] 22.1 Implement hashdeep format reader
     - Parse hashdeep format with header and CSV-style entries
     - Support hashdeep format: `size,md5,sha256,filename`
     - Handle hashdeep header lines (starting with %)
     - _Requirements: 2.2, 9.5_
   
-  - [ ] 22.2 Implement hashdeep format writer
+  - [x] 22.2 Implement hashdeep format writer
     - Add `--format hashdeep` flag to scan command
     - Write output in hashdeep-compatible format
     - Include size, multiple hashes, and filename
     - Add proper hashdeep header with metadata
     - _Requirements: 2.2, 9.5_
   
-  - [ ] 22.3 Update verify command for hashdeep format
+  - [x] 22.3 Update verify command for hashdeep format
     - Auto-detect hashdeep format when reading database
     - Support verification of hashdeep-format databases
     - _Requirements: 3.1, 9.5_
