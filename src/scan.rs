@@ -154,24 +154,30 @@ impl ScanEngine {
         // Track statistics
         let mut files_processed = 0;
         let mut files_failed = 0;
+        let mut files_skipped = 0;
         let mut total_bytes = 0u64;
         
         // Create progress bar
         let pb = ProgressBar::new(files.len() as u64);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} files ({percent}%) | {msg}")
+                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} files ({percent}%) | Processed: {msg}")
                 .unwrap()
                 .progress_chars("=>-")
         );
         
         // Process each file
         for file_path in files.iter() {
-            // Update progress bar with current file
-            let file_name = file_path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown");
-            pb.set_message(format!("Processing: {}", file_name));
+            // Update progress bar with counts instead of filename to avoid encoding issues
+            pb.set_message(format!("{} OK, {} failed, {} skipped", files_processed, files_failed, files_skipped));
+            
+            // Check if file still exists and is accessible before processing
+            let metadata_check = fs::metadata(file_path);
+            if metadata_check.is_err() {
+                files_skipped += 1;
+                pb.inc(1);
+                continue;
+            }
             
             // Compute hash for the file (using fast mode if enabled)
             let hash_result = if self.fast_mode {
@@ -241,6 +247,7 @@ impl ScanEngine {
         println!("\nScan complete!");
         println!("Files processed: {}", files_processed);
         println!("Files failed: {}", files_failed);
+        println!("Files skipped: {}", files_skipped);
         println!("Total bytes: {} ({:.2} MB)", total_bytes, total_bytes as f64 / 1_048_576.0);
         println!("Duration: {:.2}s", duration.as_secs_f64());
         
@@ -254,7 +261,7 @@ impl ScanEngine {
         
         Ok(ScanStats {
             files_processed,
-            files_failed,
+            files_failed: files_failed + files_skipped,
             total_bytes,
             duration,
         })
@@ -272,13 +279,14 @@ impl ScanEngine {
         // Thread-safe counters for progress tracking
         let files_processed = Arc::new(Mutex::new(0usize));
         let files_failed = Arc::new(Mutex::new(0usize));
+        let files_skipped = Arc::new(Mutex::new(0usize));
         let total_bytes = Arc::new(Mutex::new(0u64));
         
         // Create progress bar
         let pb = ProgressBar::new(files.len() as u64);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} files ({percent}%) | {msg}")
+                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} files ({percent}%) | Processed: {msg}")
                 .unwrap()
                 .progress_chars("=>-")
         );
@@ -286,13 +294,32 @@ impl ScanEngine {
         // Capture fast_mode for use in closure
         let fast_mode = self.fast_mode;
         
+        // Clone Arc references for use in parallel closure
+        let files_processed_clone = Arc::clone(&files_processed);
+        let files_failed_clone = Arc::clone(&files_failed);
+        let files_skipped_clone = Arc::clone(&files_skipped);
+        let total_bytes_clone = Arc::clone(&total_bytes);
+        let pb_clone = pb.clone();
+        
         // Compute hashes in parallel
         let results: Vec<_> = files.par_iter().map(|file_path| {
-            // Update progress bar with current file (thread-safe)
-            let file_name = file_path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown");
-            pb.set_message(format!("Processing: {}", file_name));
+            // Check if file still exists and is accessible before processing
+            let metadata_check = fs::metadata(file_path);
+            if metadata_check.is_err() {
+                let mut skipped = files_skipped_clone.lock().unwrap();
+                *skipped += 1;
+                pb_clone.inc(1);
+                return None;
+            }
+            
+            // Update progress bar with counts instead of filename to avoid encoding issues
+            let processed = files_processed_clone.lock().unwrap();
+            let failed = files_failed_clone.lock().unwrap();
+            let skipped = files_skipped_clone.lock().unwrap();
+            pb_clone.set_message(format!("{} OK, {} failed, {} skipped", *processed, *failed, *skipped));
+            drop(processed);
+            drop(failed);
+            drop(skipped);
             
             // Compute hash for the file (using fast mode if enabled)
             let computer = HashComputer::new();
@@ -312,12 +339,12 @@ impl ScanEngine {
                     
                     // Track file size
                     if let Ok(metadata) = fs::metadata(file_path) {
-                        let mut bytes = total_bytes.lock().unwrap();
+                        let mut bytes = total_bytes_clone.lock().unwrap();
                         *bytes += metadata.len();
                     }
                     
                     // Update success counter
-                    let mut processed = files_processed.lock().unwrap();
+                    let mut processed = files_processed_clone.lock().unwrap();
                     *processed += 1;
                     
                     Some((result.hash, path_to_write))
@@ -327,14 +354,14 @@ impl ScanEngine {
                     eprintln!("Warning: Failed to hash {}: {}", file_path.display(), e);
                     
                     // Update failure counter
-                    let mut failed = files_failed.lock().unwrap();
+                    let mut failed = files_failed_clone.lock().unwrap();
                     *failed += 1;
                     
                     None
                 }
             };
             
-            pb.inc(1);
+            pb_clone.inc(1);
             result
         }).collect();
         
@@ -394,12 +421,14 @@ impl ScanEngine {
         // Extract final statistics
         let final_processed = *files_processed.lock().unwrap();
         let final_failed = *files_failed.lock().unwrap();
+        let final_skipped = *files_skipped.lock().unwrap();
         let final_bytes = *total_bytes.lock().unwrap();
         
         // Display summary
         println!("\nScan complete!");
         println!("Files processed: {}", final_processed);
         println!("Files failed: {}", final_failed);
+        println!("Files skipped: {}", final_skipped);
         println!("Total bytes: {} ({:.2} MB)", final_bytes, final_bytes as f64 / 1_048_576.0);
         println!("Duration: {:.2}s", duration.as_secs_f64());
         
@@ -413,7 +442,7 @@ impl ScanEngine {
         
         Ok(ScanStats {
             files_processed: final_processed,
-            files_failed: final_failed,
+            files_failed: final_failed + final_skipped,
             total_bytes: final_bytes,
             duration,
         })

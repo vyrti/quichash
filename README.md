@@ -5,11 +5,13 @@ High-performance cryptographic hash utility with SIMD optimization.
 ## Features
 
 - **Algorithms**: MD5, SHA-1, SHA-2/3, BLAKE2/3, xxHash3/128
+- **Defaults**: BLAKE3 algorithm, parallel processing (2-4x faster)
+- **HDD Mode**: Sequential processing with `--hdd` flag for old mechanical drives
 - **SIMD**: Automatic hardware acceleration (SSE, AVX, AVX2, AVX-512, NEON)
 - **Optional Fast Mode**: Quick hashing for large files (samples 300MB) for edge cases
 - **Flexible Input**: Files, stdin, or text strings
 - **Wildcard Patterns**: Support for `*`, `?`, and `[...]` patterns in file/directory arguments
-- **Directory Scanning**: Recursive hashing with parallel processing
+- **Directory Scanning**: Recursive hashing with parallel processing by default
 - **Verification**: Compare hashes against stored database
 - **Database Comparison**: Compare two databases to identify changes, duplicates, and differences
 - **.hashignore**: Exclude files using gitignore patterns
@@ -22,17 +24,20 @@ High-performance cryptographic hash utility with SIMD optimization.
 ```bash
 cargo build --release
 
-# Hash a file
-./target/release/hash myfile.txt -a sha256
+# Hash a file (uses blake3 by default)
+./target/release/hash myfile.txt
 
 # Hash text
-./target/release/hash --text "hello world" -a sha256
+./target/release/hash --text "hello world"
 
 # Hash from stdin
-cat myfile.txt | ./target/release/hash -a sha256
+cat myfile.txt | ./target/release/hash
 
-# Scan directory
-./target/release/hash scan -d ./my_dir -a sha256 -o hashes.db
+# Scan directory (parallel by default)
+./target/release/hash scan -d ./my_dir -o hashes.db
+
+# Scan on old HDD (sequential)
+./target/release/hash scan -d ./my_dir -o hashes.db --hdd
 
 # Verify
 ./target/release/hash verify -b hashes.db -d ./my_dir
@@ -46,11 +51,12 @@ cat myfile.txt | ./target/release/hash -a sha256
 ### Hash Files
 
 ```bash
-hash myfile.txt -a sha256                    # Single algorithm
+hash myfile.txt                              # Uses blake3 by default
+hash myfile.txt -a sha256                    # Specify algorithm
 hash myfile.txt -a sha256 -a blake3          # Multiple algorithms
-hash largefile.iso -f -a blake3              # Fast mode
-hash myfile.txt -a sha256 -o output.txt      # Save to file
-hash myfile.txt -a sha256 --json             # JSON output
+hash largefile.iso -f                        # Fast mode
+hash myfile.txt -o output.txt                # Save to file
+hash myfile.txt --json                       # JSON output
 ```
 
 ### Wildcard Patterns
@@ -81,12 +87,13 @@ cat myfile.txt | hash -a sha256              # Hash from stdin
 ### Scan Directory
 
 ```bash
-hash scan -d /path/to/dir -a sha256 -o hashes.db              # Basic
-hash scan -d /path/to/dir -a sha256 -o hashes.db -p           # Parallel
-hash scan -d /path/to/dir -a sha256 -o hashes.db -f           # Fast mode
-hash scan -d /path/to/dir -a sha256 -o hashes.db -p -f        # Both
-hash scan -d /path/to/dir -a sha256 -o hashes.db --compress   # Compressed
-hash scan -d /path/to/dir -a sha256 -o hashes.db --format hashdeep  # Hashdeep
+hash scan -d /path/to/dir -o hashes.db                        # Basic (blake3, parallel)
+hash scan -d /path/to/dir -o hashes.db --hdd                  # Sequential for old HDDs
+hash scan -d /path/to/dir -a sha256 -o hashes.db              # Custom algorithm
+hash scan -d /path/to/dir -o hashes.db -f                     # Fast mode
+hash scan -d /path/to/dir -o hashes.db -f --hdd               # Fast mode, sequential
+hash scan -d /path/to/dir -o hashes.db --compress             # Compressed
+hash scan -d /path/to/dir -o hashes.db --format hashdeep      # Hashdeep format
 ```
 
 ### Verify Directory
@@ -133,14 +140,14 @@ hash list --json                  # JSON output
 |---------|--------|-------------|
 | | `FILE` | File or wildcard pattern to hash (omit for stdin) |
 | | `-t, --text <TEXT>` | Hash text string |
-| | `-a, --algorithm <ALG>` | Algorithm (default: sha256) |
+| | `-a, --algorithm <ALG>` | Algorithm (default: blake3) |
 | | `-o, --output <FILE>` | Write to file |
 | | `-f, --fast` | Fast mode (samples 300MB) |
 | | `--json` | JSON output |
 | scan | `-d, --directory <DIR>` | Directory or wildcard pattern to scan |
-| | `-a, --algorithm <ALG>` | Algorithm (default: sha256) |
+| | `-a, --algorithm <ALG>` | Algorithm (default: blake3) |
 | | `-o, --output <FILE>` | Output database |
-| | `-p, --parallel` | Parallel processing |
+| | `--hdd` | Sequential mode for old HDDs (default: parallel) |
 | | `-f, --fast` | Fast mode |
 | | `--format <FMT>` | standard or hashdeep |
 | | `--compress` | LZMA compression |
@@ -195,9 +202,10 @@ Patterns: `*.ext`, `dir/`, `!pattern`, `#comments`, `**/*.ext`
 | SHA3-256 | 200-400 MB/s | Post-quantum |
 
 **Tips:**
-- Use `-p` for parallel (2-4x faster)
+- Parallel processing is enabled by default (2-4x faster on multi-core)
+- Use `--hdd` for old mechanical drives (sequential processing)
 - Use `-f` for large files (10-100x faster)
-- Use BLAKE3 for fastest crypto
+- BLAKE3 is the default algorithm (fastest cryptographic hash)
 - Compile with `RUSTFLAGS="-C target-cpu=native"` for best performance
 
 **Fast Mode Speedup:**
@@ -218,31 +226,35 @@ Samples 300MB (first/middle/last 100MB) instead of entire file.
 # Verify downloaded file
 hash downloaded-file.iso -a sha256
 
-# Backup verification
-hash scan -d /data -a sha256 -o backup.db -p
+# Backup verification (parallel by default)
+hash scan -d /data -o backup.db
+hash verify -b backup.db -d /data
+
+# Backup on old HDD (sequential processing)
+hash scan -d /data -o backup.db --hdd
 hash verify -b backup.db -d /data
 
 # Monitor changes
-hash scan -d /etc/config -a sha256 -o baseline.db
+hash scan -d /etc/config -o baseline.db
 hash verify -b baseline.db -d /etc/config
 
 # Compare two snapshots
-hash scan -d /data -a sha256 -o snapshot1.db
+hash scan -d /data -o snapshot1.db
 # ... time passes ...
-hash scan -d /data -a sha256 -o snapshot2.db
+hash scan -d /data -o snapshot2.db
 hash compare snapshot1.db snapshot2.db -o changes.txt
 
 # Find duplicates
-hash scan -d /media -a sha256 -o media.db
+hash scan -d /media -o media.db
 hash compare media.db media.db                    # Compare with itself
 
 # Forensic analysis
 hash scan -d /evidence -a sha3-256 -o evidence.db
 hash scan -d /evidence -a sha256 -o evidence.txt --format hashdeep
 
-# Quick checksums
-hash large-backup.tar.gz -f -a blake3
-hash scan -d /backups -a blake3 -o checksums.db -p -f
+# Quick checksums (blake3 is default)
+hash large-backup.tar.gz -f
+hash scan -d /backups -o checksums.db -f
 
 # Automation
 hash verify -b hashes.db -d /data --json | jq '.report.mismatches'

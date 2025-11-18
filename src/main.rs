@@ -44,8 +44,8 @@ fn main() {
     
     // Dispatch to appropriate handler
     let result = match cli.command {
-        Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
-            handle_scan_command(&directory, &algorithm, &output, parallel, fast, &format, json, compress)
+        Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
+            handle_scan_command(&directory, &algorithm, &output, !hdd, fast, &format, json, compress)
         }
         Some(Command::Verify { database, directory, json }) => {
             handle_verify_command(&database, &directory, json)

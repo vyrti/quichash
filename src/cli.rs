@@ -14,13 +14,15 @@ use crate::error::HashUtilityError;
 #[command(version = "0.1.0")]
 #[command(about = "Cryptographic hash computation and verification tool", long_about = None)]
 #[command(after_help = "EXAMPLES:\n  \
-    hash file.txt -a sha256\n  \
+    hash file.txt                                           # uses blake3 by default\n  \
+    hash file.txt -a sha256                                 # specify algorithm\n  \
     hash file.txt -f -a sha256                              # fast mode\n  \
     hash --text \"hello world\" -a sha256\n  \
     cat file.txt | hash -a sha256\n  \
-    hash scan -d /path/to/dir -a sha256 -o hashes.txt\n  \
+    hash scan -d /path/to/dir -o hashes.txt                 # parallel by default\n  \
+    hash scan -d /path/to/dir -o hashes.txt --hdd           # sequential for old HDDs\n  \
     hash scan -d /path/to/dir -o hashes.txt --format hashdeep  # hashdeep format\n  \
-    hash scan -d /path/to/dir -o hashes.txt --compress   # compressed output\n  \
+    hash scan -d /path/to/dir -o hashes.txt --compress      # compressed output\n  \
     hash scan -d /path/to/dir -o hashes.txt --json          # JSON output\n  \
     hash verify -b hashes.txt -d /path/to/dir\n  \
     hash compare db1.txt db2.txt                            # compare two databases\n  \
@@ -41,7 +43,7 @@ pub struct Cli {
     pub text: Option<String>,
     
     /// Hash algorithm to use: md5, sha1, sha256, sha512, sha3-256, blake2b, blake3, xxh3, etc. (use 'hash list' to see all)
-    #[arg(short = 'a', long = "algorithm", value_name = "ALGORITHM", default_value = "sha256")]
+    #[arg(short = 'a', long = "algorithm", value_name = "ALGORITHM", default_value = "blake3")]
     pub algorithms: Vec<String>,
     
     /// Write output to file instead of stdout
@@ -70,16 +72,16 @@ pub enum Command {
         directory: String,
         
         /// Hash algorithm to use (use 'hash list' to see all available algorithms)
-        #[arg(short = 'a', long = "algorithm", value_name = "ALGORITHM", default_value = "sha256")]
+        #[arg(short = 'a', long = "algorithm", value_name = "ALGORITHM", default_value = "blake3")]
         algorithm: String,
         
         /// Output database file path (use .xz extension with --compress for automatic compression)
         #[arg(short = 'o', long = "output", value_name = "FILE")]
         output: PathBuf,
         
-        /// Use parallel processing to hash multiple files simultaneously (faster on multi-core systems)
-        #[arg(short = 'p', long = "parallel")]
-        parallel: bool,
+        /// Sequential mode for old HDDs (processes files one by one instead of parallel)
+        #[arg(long = "hdd")]
+        hdd: bool,
         
         /// Fast mode: hash only first/middle/last 100MB of large files (faster but less thorough)
         #[arg(short = 'f', long = "fast")]
@@ -290,11 +292,11 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
                 assert_eq!(directory, "/path/to/dir");
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
-                assert_eq!(parallel, false);
+                assert_eq!(hdd, false);
                 assert_eq!(fast, false);
                 assert_eq!(format, "standard");
                 assert_eq!(json, false);
@@ -305,16 +307,16 @@ mod tests {
     }
     
     #[test]
-    fn test_parse_scan_command_with_parallel() {
-        let args = vec!["hash", "scan", "-d", "/path/to/dir", "-a", "sha256", "-o", "hashes.txt", "-p"];
+    fn test_parse_scan_command_with_hdd() {
+        let args = vec!["hash", "scan", "-d", "/path/to/dir", "-a", "sha256", "-o", "hashes.txt", "--hdd"];
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
                 assert_eq!(directory, "/path/to/dir");
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
-                assert_eq!(parallel, true);
+                assert_eq!(hdd, true);
                 assert_eq!(fast, false);
                 assert_eq!(format, "standard");
                 assert_eq!(json, false);
@@ -326,15 +328,15 @@ mod tests {
     
     #[test]
     fn test_parse_scan_command_long_flags() {
-        let args = vec!["hash", "scan", "--directory", "/path/to/dir", "--algorithm", "sha256", "--output", "hashes.txt", "--parallel"];
+        let args = vec!["hash", "scan", "--directory", "/path/to/dir", "--algorithm", "sha256", "--output", "hashes.txt", "--hdd"];
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
                 assert_eq!(directory, "/path/to/dir");
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
-                assert_eq!(parallel, true);
+                assert_eq!(hdd, true);
                 assert_eq!(fast, false);
                 assert_eq!(format, "standard");
                 assert_eq!(json, false);
@@ -456,7 +458,7 @@ mod tests {
         
         assert_eq!(cli.command, None);
         assert_eq!(cli.file, None);
-        assert_eq!(cli.algorithms, vec!["sha256"]); // default algorithm
+        assert_eq!(cli.algorithms, vec!["blake3"]); // default algorithm
         assert_eq!(cli.output, None);
         assert_eq!(cli.fast, false);
     }
@@ -485,7 +487,7 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         assert_eq!(cli.command, None);
-        assert_eq!(cli.algorithms, vec!["sha256"]); // default algorithm
+        assert_eq!(cli.algorithms, vec!["blake3"]); // default algorithm
         assert_eq!(cli.fast, false); // default fast mode
     }
     
@@ -521,7 +523,7 @@ mod tests {
         
         match cli.command {
             Some(Command::Scan { algorithm, fast, format, json, compress, .. }) => {
-                assert_eq!(algorithm, "sha256"); // default algorithm
+                assert_eq!(algorithm, "blake3"); // default algorithm
                 assert_eq!(fast, false); // default fast mode
                 assert_eq!(format, "standard"); // default format
                 assert_eq!(json, false); // default json
@@ -537,11 +539,11 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
                 assert_eq!(directory, "/path/to/dir");
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
-                assert_eq!(parallel, false);
+                assert_eq!(hdd, false);
                 assert_eq!(fast, true);
                 assert_eq!(format, "standard");
                 assert_eq!(json, false);
@@ -557,11 +559,11 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
                 assert_eq!(directory, "/path/to/dir");
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
-                assert_eq!(parallel, false);
+                assert_eq!(hdd, false);
                 assert_eq!(fast, true);
                 assert_eq!(format, "standard");
                 assert_eq!(json, false);
@@ -572,16 +574,16 @@ mod tests {
     }
     
     #[test]
-    fn test_parse_scan_command_with_parallel_and_fast() {
-        let args = vec!["hash", "scan", "-d", "/path/to/dir", "-a", "sha256", "-o", "hashes.txt", "-p", "-f"];
+    fn test_parse_scan_command_with_hdd_and_fast() {
+        let args = vec!["hash", "scan", "-d", "/path/to/dir", "-a", "sha256", "-o", "hashes.txt", "--hdd", "-f"];
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
                 assert_eq!(directory, "/path/to/dir");
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
-                assert_eq!(parallel, true);
+                assert_eq!(hdd, true);
                 assert_eq!(fast, true);
                 assert_eq!(format, "standard");
                 assert_eq!(json, false);
@@ -645,11 +647,11 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
                 assert_eq!(directory, "/path/to/dir");
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
-                assert_eq!(parallel, false);
+                assert_eq!(hdd, false);
                 assert_eq!(fast, false);
                 assert_eq!(format, "standard");
                 assert_eq!(json, false);
@@ -661,15 +663,15 @@ mod tests {
     
     #[test]
     fn test_parse_scan_command_with_all_flags() {
-        let args = vec!["hash", "scan", "-d", "/path/to/dir", "-a", "sha256", "-o", "hashes.txt", "-p", "-f", "--compress", "--json"];
+        let args = vec!["hash", "scan", "-d", "/path/to/dir", "-a", "sha256", "-o", "hashes.txt", "--hdd", "-f", "--compress", "--json"];
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
-            Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            Some(Command::Scan { directory, algorithm, output, hdd, fast, format, json, compress }) => {
                 assert_eq!(directory, "/path/to/dir");
                 assert_eq!(algorithm, "sha256");
                 assert_eq!(output, PathBuf::from("hashes.txt"));
-                assert_eq!(parallel, true);
+                assert_eq!(hdd, true);
                 assert_eq!(fast, true);
                 assert_eq!(format, "standard");
                 assert_eq!(json, true);
