@@ -192,8 +192,194 @@
     - Verify that files smaller than 300MB are handled correctly
     - _Requirements: 1.4, 1.5_
 
-- [x] 15. Final integration and testing
-  - [x] 15.2 Create usage examples and documentation
-    - Add README with installation instructions
-    - Document all commands with examples
+- [-] 15. Add progress bar reporting
+  - [x] 15.1 Add indicatif dependency
+    - Add indicatif crate to Cargo.toml for progress bar support
+    - _Requirements: 2.1, 2.5_
+  
+  - [ ] 15.2 Implement progress bar for scan operations
+    - Create progress bar showing files processed, current file, and percentage
+    - Display throughput (MB/s) and estimated time remaining
+    - Update progress bar during directory scanning
+    - Clear progress bar on completion and show summary
+    - _Requirements: 2.5_
+  
+  - [ ] 15.3 Implement progress bar for verify operations
+    - Show progress during verification with files checked count
+    - Display current file being verified
+    - _Requirements: 3.1_
+
+- [ ] 16. Add stdin hash support
+  - [ ] 16.1 Implement stdin reading in hash command
+    - Detect when no file is provided and stdin is available
+    - Read from stdin with buffered I/O
+    - Support piping: `cat file.txt | hash -a sha256`
+    - _Requirements: 1.1_
+  
+  - [ ]* 16.2 Write property test for stdin hashing
+    - **Property: Stdin hash equivalence**
+    - Verify that hashing via stdin produces same result as hashing the file directly
+    - _Requirements: 1.1_
+
+- [ ] 17. Add command-line text hashing
+  - [ ] 17.1 Add --text flag to hash command
+    - Add `-t/--text` flag that accepts a string argument
+    - Hash the provided text directly: `hash -a sha256 --text "hello world"`
+    - Handle UTF-8 encoding properly
+    - _Requirements: 1.1_
+  
+  - [ ]* 17.2 Write property test for text hashing
+    - **Property: Text hash consistency**
+    - Verify that hashing text produces consistent results
+    - _Requirements: 1.1_
+
+- [ ] 18. Add HMAC support
+  - [ ] 18.1 Add HMAC dependencies
+    - Add hmac crate to Cargo.toml
+    - Add support for HMAC variants of existing algorithms
+    - _Requirements: 1.1_
+  
+  - [ ] 18.2 Implement HMAC computation
+    - Add `--key` flag to hash command for keyed hashing
+    - Implement HMAC wrappers for SHA256, SHA512, SHA3, BLAKE2, BLAKE3
+    - Support usage: `hash -a sha256 --key "secret" -f file.txt`
+    - Register HMAC algorithms in HashRegistry with "hmac-" prefix
+    - _Requirements: 1.1_
+  
+  - [ ]* 18.3 Write property test for HMAC correctness
+    - **Property: HMAC key sensitivity**
+    - Verify that different keys produce different HMACs for same input
+    - Verify that same key produces same HMAC for same input
+    - _Requirements: 1.1_
+
+- [ ] 19. Add non-cryptographic hash algorithms
+  - [ ] 19.1 Add xxhash dependency
+    - Add xxhash-rust crate to Cargo.toml
+    - Research and select fastest non-cryptographic hash (xxh3, xxh128)
+    - _Requirements: 1.2_
+  
+  - [ ] 19.2 Implement non-cryptographic hash wrappers
+    - Create wrappers for xxh3 and xxh128
+    - Register in HashRegistry with appropriate metadata
+    - Mark as non-cryptographic in algorithm info
+    - _Requirements: 1.2_
+  
+  - [ ]* 19.3 Write property test for non-cryptographic hash performance
+    - **Property: Non-cryptographic hash speed**
+    - Verify that xxh3 is significantly faster than cryptographic hashes
+    - _Requirements: 1.2_
+
+- [ ] 20. Add Base64 output format
+  - [ ] 20.1 Add base64 dependency
+    - Add base64 crate to Cargo.toml
+    - _Requirements: 9.1_
+  
+  - [ ] 20.2 Implement Base64 output option
+    - Add `--base64` flag to hash, scan, and verify commands
+    - Convert hash output from hex to Base64 when flag is set
+    - Update DatabaseHandler to support both hex and Base64 formats
+    - Auto-detect format when reading database files
+    - _Requirements: 9.1_
+  
+  - [ ]* 20.3 Write property test for Base64 encoding
+    - **Property: Base64 round-trip**
+    - Verify that hex to Base64 conversion is reversible
+    - Verify that Base64 hashes can be verified correctly
+    - _Requirements: 9.1_
+
+- [ ] 21. Add .hashignore file support
+  - [ ] 21.1 Add ignore dependency
+    - Add ignore crate to Cargo.toml (same crate used by ripgrep)
+    - _Requirements: 2.1_
+  
+  - [ ] 21.2 Implement .hashignore parsing and filtering
+    - Create IgnoreHandler that reads .hashignore files
+    - Support gitignore-style patterns (globs, negation, comments)
+    - Integrate with ScanEngine to skip ignored files
+    - Search for .hashignore in scanned directory and parent directories
+    - _Requirements: 2.1, 2.4_
+  
+  - [ ]* 21.3 Write property test for ignore pattern matching
+    - **Property: Ignore pattern correctness**
+    - Verify that files matching ignore patterns are excluded
+    - Verify that negation patterns work correctly
+    - _Requirements: 2.1_
+
+- [ ] 22. Add hashdeep format support
+  - [ ] 22.1 Implement hashdeep format reader
+    - Parse hashdeep format with header and CSV-style entries
+    - Support hashdeep format: `size,md5,sha256,filename`
+    - Handle hashdeep header lines (starting with %)
+    - _Requirements: 2.2, 9.5_
+  
+  - [ ] 22.2 Implement hashdeep format writer
+    - Add `--format hashdeep` flag to scan command
+    - Write output in hashdeep-compatible format
+    - Include size, multiple hashes, and filename
+    - Add proper hashdeep header with metadata
+    - _Requirements: 2.2, 9.5_
+  
+  - [ ] 22.3 Update verify command for hashdeep format
+    - Auto-detect hashdeep format when reading database
+    - Support verification of hashdeep-format databases
+    - _Requirements: 3.1, 9.5_
+  
+  - [ ]* 22.4 Write property test for hashdeep format round-trip
+    - **Property: Hashdeep format round-trip**
+    - Verify that writing and reading hashdeep format preserves data
+    - _Requirements: 2.2, 9.5_
+
+- [ ] 23. Add JSON output format
+  - [ ] 23.1 Add serde dependencies
+    - Add serde and serde_json to Cargo.toml
+    - Derive Serialize for relevant structs
+    - _Requirements: 9.1_
+  
+  - [ ] 23.2 Implement JSON output option
+    - Add `--json` flag to all commands
+    - Output results as structured JSON
+    - Include metadata: timestamp, algorithm, file count, etc.
+    - Format: `{"files": [{"path": "...", "hash": "...", "size": ...}], "metadata": {...}}`
+    - _Requirements: 9.1_
+  
+  - [ ]* 23.3 Write property test for JSON serialization
+    - **Property: JSON round-trip**
+    - Verify that JSON output can be parsed back correctly
+    - _Requirements: 9.1_
+
+- [ ] 24. Add database compression support
+  - [ ] 24.1 Add compression dependency
+    - Add lzma-rs crate to Cargo.toml for LZMA compression
+    - _Requirements: 2.2_
+  
+  - [ ] 24.2 Implement automatic database compression
+    - Add `--compress` flag to scan command
+    - Automatically compress output database with LZMA
+    - Use .xz extension for compressed databases
+    - Auto-detect and decompress when reading .xz databases
+    - _Requirements: 2.2_
+  
+  - [ ]* 24.3 Write property test for compression round-trip
+    - **Property: Compression preserves data**
+    - Verify that compressed databases can be read correctly
+    - Verify that compression reduces file size
+    - _Requirements: 2.2_
+
+- [ ] 25. Final integration and testing
+  - [ ] 25.1 Integration testing for new features
+    - Test stdin hashing with various inputs
+    - Test text hashing with special characters
+    - Test HMAC with different keys
+    - Test .hashignore with complex patterns
+    - Test hashdeep format compatibility
+    - Test JSON output parsing
+    - Test database compression
+    - _Requirements: 1.1, 2.1, 2.2, 9.1_
+  
+  - [ ] 25.2 Update documentation
+    - Add examples for all new features to README
+    - Document .hashignore syntax and behavior
+    - Document hashdeep format compatibility
+    - Document JSON output schema
+    - Document HMAC usage and security considerations
     - _Requirements: 6.1, 6.2_

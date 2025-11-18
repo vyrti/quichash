@@ -16,6 +16,7 @@ sha3 = "0.10"
 blake2 = "0.10"
 blake3 = "1.8"
 rayon = "1.11"
+indicatif = "0.17"
 
 [dev-dependencies]
 hex = "0.4"
