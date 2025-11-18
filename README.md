@@ -268,8 +268,6 @@ Automatic support for SSE, AVX, AVX2, AVX-512 (x86_64) and NEON (ARM).
 
 Verify: `cargo test --release --test simd_verification -- --nocapture`
 
-See [SIMD_OPTIMIZATION.md](SIMD_OPTIMIZATION.md) for details.
-
 ## Wildcard Patterns
 
 Supported patterns:
