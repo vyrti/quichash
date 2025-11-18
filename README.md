@@ -11,6 +11,7 @@ High-performance cryptographic hash utility with SIMD optimization.
 - **Wildcard Patterns**: Support for `*`, `?`, and `[...]` patterns in file/directory arguments
 - **Directory Scanning**: Recursive hashing with parallel processing
 - **Verification**: Compare hashes against stored database
+- **Database Comparison**: Compare two databases to identify changes, duplicates, and differences
 - **.hashignore**: Exclude files using gitignore patterns
 - **Formats**: Standard, hashdeep, JSON
 - **Compression**: LZMA compression for databases
