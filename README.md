@@ -92,7 +92,7 @@ hash list --json                  # JSON output
 
 | Command | Option | Description |
 |---------|--------|-------------|
-| hash | `FILE` | File to hash (omit for stdin) |
+| | `FILE` | File to hash (omit for stdin) |
 | | `-t, --text <TEXT>` | Hash text string |
 | | `-a, --algorithm <ALG>` | Algorithm (default: sha256) |
 | | `-o, --output <FILE>` | Write to file |
