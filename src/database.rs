@@ -226,9 +226,11 @@ impl DatabaseHandler {
     /// Expected format: `<hash>  <algorithm>  <fast_mode>  <filepath>` (two spaces between fields)
     /// Returns None if the line is malformed
     /// Handles both forward and backward slashes in paths
+    /// Note: Filenames may contain two spaces, so we only split on the first 3 delimiters
     fn parse_line(line: &str) -> Option<(String, String, bool, PathBuf)> {
-        // Split on two spaces (the standard format)
-        let parts: Vec<&str> = line.split("  ").collect();
+        // Split on two spaces, but only for the first 3 fields
+        // The rest is the filename (which may contain two spaces)
+        let parts: Vec<&str> = line.splitn(4, "  ").collect();
         
         if parts.len() == 4 {
             let hash = parts[0].trim();
@@ -681,6 +683,49 @@ mod tests {
         
         // All paths should be parsed successfully
         assert_eq!(database.len(), 3);
+        
+        // Cleanup
+        fs::remove_file(temp_file).unwrap();
+    }
+    
+    #[test]
+    fn test_parse_line_with_double_spaces_in_filename() {
+        // Test case for filenames that contain two consecutive spaces
+        let line = "abc123  sha256  normal  path/to/file  with  spaces.txt";
+        let result = DatabaseHandler::parse_line(line);
+        
+        assert!(result.is_some());
+        let (hash, algorithm, fast_mode, path) = result.unwrap();
+        assert_eq!(hash, "abc123");
+        assert_eq!(algorithm, "sha256");
+        assert_eq!(fast_mode, false);
+        // The filename should preserve the double spaces
+        assert!(path.to_str().unwrap().contains("file  with  spaces.txt"));
+    }
+    
+    #[test]
+    fn test_read_database_with_double_spaces_in_filenames() {
+        let temp_file = "test_db_double_spaces_temp.txt";
+        // Create database with filenames containing double spaces (like the Windows bug)
+        let content = "39301d664174903a82a8e204ec9a0f72b1b672ab2ba42290ae7bb43ff4395142  blake3  normal  Lesson 07\\008. Lesson 7 Lab  Setting up Storage.en.srt\n\
+                       479173443b0a33bb6ac48b381475250642351f20c603df5c9d3bb6424d023de3  blake3  normal  Lesson 07\\008. Lesson 7 Lab  Setting up Storage.mp4\n";
+        fs::write(temp_file, content).unwrap();
+        
+        let database = DatabaseHandler::read_database(Path::new(temp_file)).unwrap();
+        
+        // Both entries should be parsed successfully
+        assert_eq!(database.len(), 2);
+        
+        // Verify the entries exist with the correct filenames
+        let found_srt = database.iter().any(|(path, _)| {
+            path.to_str().unwrap().contains("Lesson 7 Lab") && path.to_str().unwrap().ends_with(".srt")
+        });
+        let found_mp4 = database.iter().any(|(path, _)| {
+            path.to_str().unwrap().contains("Lesson 7 Lab") && path.to_str().unwrap().ends_with(".mp4")
+        });
+        
+        assert!(found_srt, "Should find .srt file");
+        assert!(found_mp4, "Should find .mp4 file");
         
         // Cleanup
         fs::remove_file(temp_file).unwrap();
