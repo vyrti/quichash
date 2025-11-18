@@ -29,21 +29,21 @@ fn main() {
     
     // Dispatch to appropriate handler
     let result = match cli.command {
-        Some(Command::Scan { directory, algorithm, output, parallel, fast, format }) => {
-            handle_scan_command(&directory, &algorithm, &output, parallel, fast, &format)
+        Some(Command::Scan { directory, algorithm, output, parallel, fast, format, json, compress }) => {
+            handle_scan_command(&directory, &algorithm, &output, parallel, fast, &format, json, compress)
         }
-        Some(Command::Verify { database, directory }) => {
-            handle_verify_command(&database, &directory)
+        Some(Command::Verify { database, directory, json }) => {
+            handle_verify_command(&database, &directory, json)
         }
-        Some(Command::Benchmark { size_mb }) => {
-            handle_benchmark_command(size_mb)
+        Some(Command::Benchmark { size_mb, json }) => {
+            handle_benchmark_command(size_mb, json)
         }
-        Some(Command::List) => {
-            handle_list_command()
+        Some(Command::List { json }) => {
+            handle_list_command(json)
         }
         None => {
             // No subcommand means hash mode (default)
-            handle_hash_command(cli.file.as_deref(), cli.text.as_deref(), &cli.algorithms, cli.output.as_deref(), cli.fast)
+            handle_hash_command(cli.file.as_deref(), cli.text.as_deref(), &cli.algorithms, cli.output.as_deref(), cli.fast, cli.json)
         }
     };
     
@@ -61,6 +61,7 @@ fn handle_hash_command(
     algorithms: &[String],
     output: Option<&std::path::Path>,
     fast: bool,
+    json: bool,
 ) -> Result<(), HashUtilityError> {
     let computer = HashComputer::new();
     
@@ -106,23 +107,56 @@ fn handle_hash_command(
         }
     };
     
-    // Format output
-    let mut output_lines = Vec::new();
-    for result in results {
-        output_lines.push(format!("{}  {}", result.hash, result.file_path.display()));
-    }
+    // Format output based on json flag
+    let output_content = if json {
+        // JSON output
+        #[derive(serde::Serialize)]
+        struct HashOutput {
+            files: Vec<hash::HashResult>,
+            metadata: HashMetadata,
+        }
+        
+        #[derive(serde::Serialize)]
+        struct HashMetadata {
+            timestamp: String,
+            algorithms: Vec<String>,
+            file_count: usize,
+            fast_mode: bool,
+        }
+        
+        let output = HashOutput {
+            files: results.clone(),
+            metadata: HashMetadata {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                algorithms: algorithms.to_vec(),
+                file_count: results.len(),
+                fast_mode: fast,
+            },
+        };
+        
+        serde_json::to_string_pretty(&output).map_err(|e| {
+            HashUtilityError::InvalidArguments {
+                message: format!("Failed to serialize JSON: {}", e),
+            }
+        })?
+    } else {
+        // Plain text output
+        let mut output_lines = Vec::new();
+        for result in results {
+            output_lines.push(format!("{}  {}", result.hash, result.file_path.display()));
+        }
+        output_lines.join("\n") + "\n"
+    };
     
     // Write to output destination
     if let Some(output_path) = output {
         // Write to file with better error context
-        std::fs::write(output_path, output_lines.join("\n") + "\n").map_err(|e| {
+        std::fs::write(output_path, output_content).map_err(|e| {
             HashUtilityError::from_io_error(e, "writing output", Some(output_path.to_path_buf()))
         })?;
     } else {
         // Write to stdout
-        for line in output_lines {
-            println!("{}", line);
-        }
+        print!("{}", output_content);
     }
     
     Ok(())
@@ -136,6 +170,8 @@ fn handle_scan_command(
     parallel: bool,
     fast: bool,
     format_str: &str,
+    json: bool,
+    compress: bool,
 ) -> Result<(), HashUtilityError> {
     // Parse format string
     let format = match format_str.to_lowercase().as_str() {
@@ -153,7 +189,66 @@ fn handle_scan_command(
         .with_format(format);
     
     // Scan directory and write database
-    let _stats = engine.scan_directory(directory, algorithm, output)?;
+    let stats = engine.scan_directory(directory, algorithm, output)?;
+    
+    // Compress the database if requested
+    let final_output = if compress {
+        use database::DatabaseHandler;
+        
+        println!("Compressing database...");
+        let compressed_path = DatabaseHandler::compress_database(output)?;
+        
+        // Remove the uncompressed file
+        std::fs::remove_file(output).map_err(|e| {
+            HashUtilityError::from_io_error(e, "removing uncompressed database", Some(output.to_path_buf()))
+        })?;
+        
+        println!("Database compressed to: {}", compressed_path.display());
+        compressed_path
+    } else {
+        output.to_path_buf()
+    };
+    
+    // Output results in JSON if requested
+    if json {
+        #[derive(serde::Serialize)]
+        struct ScanOutput {
+            stats: scan::ScanStats,
+            metadata: ScanMetadata,
+        }
+        
+        #[derive(serde::Serialize)]
+        struct ScanMetadata {
+            timestamp: String,
+            directory: std::path::PathBuf,
+            algorithm: String,
+            output_file: std::path::PathBuf,
+            parallel: bool,
+            fast_mode: bool,
+            format: String,
+        }
+        
+        let output = ScanOutput {
+            stats,
+            metadata: ScanMetadata {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                directory: directory.to_path_buf(),
+                algorithm: algorithm.to_string(),
+                output_file: final_output,
+                parallel,
+                fast_mode: fast,
+                format: format_str.to_string(),
+            },
+        };
+        
+        let json_output = serde_json::to_string_pretty(&output).map_err(|e| {
+            HashUtilityError::InvalidArguments {
+                message: format!("Failed to serialize JSON: {}", e),
+            }
+        })?;
+        
+        println!("{}", json_output);
+    }
     
     Ok(())
 }
@@ -162,48 +257,147 @@ fn handle_scan_command(
 fn handle_verify_command(
     database: &std::path::Path,
     directory: &std::path::Path,
+    json: bool,
 ) -> Result<(), HashUtilityError> {
     let engine = VerifyEngine::new();
     
     // Run verification
     let report = engine.verify(database, directory)?;
     
-    // Display report
-    report.display();
+    // Output results based on format
+    if json {
+        #[derive(serde::Serialize)]
+        struct VerifyOutput {
+            report: verify::VerifyReport,
+            metadata: VerifyMetadata,
+        }
+        
+        #[derive(serde::Serialize)]
+        struct VerifyMetadata {
+            timestamp: String,
+            database: std::path::PathBuf,
+            directory: std::path::PathBuf,
+        }
+        
+        let output = VerifyOutput {
+            report,
+            metadata: VerifyMetadata {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                database: database.to_path_buf(),
+                directory: directory.to_path_buf(),
+            },
+        };
+        
+        let json_output = serde_json::to_string_pretty(&output).map_err(|e| {
+            HashUtilityError::InvalidArguments {
+                message: format!("Failed to serialize JSON: {}", e),
+            }
+        })?;
+        
+        println!("{}", json_output);
+    } else {
+        // Display report in plain text
+        report.display();
+    }
     
     Ok(())
 }
 
 /// Handle the benchmark command: run performance tests
-fn handle_benchmark_command(size_mb: usize) -> Result<(), HashUtilityError> {
+fn handle_benchmark_command(size_mb: usize, json: bool) -> Result<(), HashUtilityError> {
     let engine = BenchmarkEngine::new();
     
-    println!("Running benchmarks with {} MB of test data...", size_mb);
+    if !json {
+        println!("Running benchmarks with {} MB of test data...", size_mb);
+    }
     
     // Run benchmarks
     let results = engine.run_benchmarks(size_mb)?;
     
-    // Display results
-    engine.display_results(&results);
+    // Output results based on format
+    if json {
+        #[derive(serde::Serialize)]
+        struct BenchmarkOutput {
+            results: Vec<benchmark::BenchmarkResult>,
+            metadata: BenchmarkMetadata,
+        }
+        
+        #[derive(serde::Serialize)]
+        struct BenchmarkMetadata {
+            timestamp: String,
+            data_size_mb: usize,
+            algorithm_count: usize,
+        }
+        
+        let output = BenchmarkOutput {
+            results: results.clone(),
+            metadata: BenchmarkMetadata {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                data_size_mb: size_mb,
+                algorithm_count: results.len(),
+            },
+        };
+        
+        let json_output = serde_json::to_string_pretty(&output).map_err(|e| {
+            HashUtilityError::InvalidArguments {
+                message: format!("Failed to serialize JSON: {}", e),
+            }
+        })?;
+        
+        println!("{}", json_output);
+    } else {
+        // Display results in plain text
+        engine.display_results(&results);
+    }
     
     Ok(())
 }
 
 /// Handle the list command: display available algorithms
-fn handle_list_command() -> Result<(), HashUtilityError> {
+fn handle_list_command(json: bool) -> Result<(), HashUtilityError> {
     let algorithms = HashRegistry::list_algorithms();
     
-    println!("\nAvailable Hash Algorithms:\n");
-    println!("{:<20} {:>12} {:>15} {:>15}", "Algorithm", "Output Bits", "Post-Quantum", "Cryptographic");
-    println!("{}", "-".repeat(65));
-    
-    for algo in algorithms {
-        let pq_status = if algo.post_quantum { "Yes" } else { "No" };
-        let crypto_status = if algo.cryptographic { "Yes" } else { "No" };
-        println!("{:<20} {:>12} {:>15} {:>15}", algo.name, algo.output_bits, pq_status, crypto_status);
+    if json {
+        #[derive(serde::Serialize)]
+        struct ListOutput {
+            algorithms: Vec<hash::AlgorithmInfo>,
+            metadata: ListMetadata,
+        }
+        
+        #[derive(serde::Serialize)]
+        struct ListMetadata {
+            timestamp: String,
+            algorithm_count: usize,
+        }
+        
+        let output = ListOutput {
+            algorithms: algorithms.clone(),
+            metadata: ListMetadata {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                algorithm_count: algorithms.len(),
+            },
+        };
+        
+        let json_output = serde_json::to_string_pretty(&output).map_err(|e| {
+            HashUtilityError::InvalidArguments {
+                message: format!("Failed to serialize JSON: {}", e),
+            }
+        })?;
+        
+        println!("{}", json_output);
+    } else {
+        println!("\nAvailable Hash Algorithms:\n");
+        println!("{:<20} {:>12} {:>15} {:>15}", "Algorithm", "Output Bits", "Post-Quantum", "Cryptographic");
+        println!("{}", "-".repeat(65));
+        
+        for algo in algorithms {
+            let pq_status = if algo.post_quantum { "Yes" } else { "No" };
+            let crypto_status = if algo.cryptographic { "Yes" } else { "No" };
+            println!("{:<20} {:>12} {:>15} {:>15}", algo.name, algo.output_bits, pq_status, crypto_status);
+        }
+        
+        println!();
     }
-    
-    println!();
     
     Ok(())
 }

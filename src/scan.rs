@@ -18,12 +18,21 @@ use indicatif::{ProgressBar, ProgressStyle};
 pub type ScanError = HashUtilityError;
 
 /// Statistics collected during a directory scan
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ScanStats {
     pub files_processed: usize,
     pub files_failed: usize,
     pub total_bytes: u64,
+    #[serde(serialize_with = "serialize_duration")]
     pub duration: Duration,
+}
+
+// Helper function to serialize Duration as seconds
+fn serialize_duration<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_f64(duration.as_secs_f64())
 }
 
 use crate::database::DatabaseFormat;

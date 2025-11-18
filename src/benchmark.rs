@@ -6,7 +6,7 @@ use crate::error::HashUtilityError;
 use std::time::{Duration, Instant};
 
 /// Result of a benchmark run for a single algorithm
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct BenchmarkResult {
     pub algorithm: String,
     pub throughput_mbps: f64,

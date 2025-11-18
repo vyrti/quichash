@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use xz2::read::XzDecoder;
+use xz2::write::XzEncoder;
 
 use crate::path_utils;
 use crate::error::HashUtilityError;
@@ -30,12 +32,70 @@ pub enum DatabaseFormat {
 pub struct DatabaseHandler;
 
 impl DatabaseHandler {
+    /// Check if a path has .xz extension (compressed database)
+    pub fn is_compressed(path: &Path) -> bool {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext == "xz")
+            .unwrap_or(false)
+    }
+    
+    /// Compress a database file with LZMA
+    /// Creates a new file with .xz extension
+    pub fn compress_database(input_path: &Path) -> Result<PathBuf, HashUtilityError> {
+        // Read the input file
+        let input_file = File::open(input_path).map_err(|e| {
+            HashUtilityError::from_io_error(e, "opening database for compression", Some(input_path.to_path_buf()))
+        })?;
+        
+        // Create output path with .xz extension
+        let output_path = input_path.with_extension(
+            format!("{}.xz", input_path.extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("txt"))
+        );
+        
+        // Create compressed output file
+        let output_file = File::create(&output_path).map_err(|e| {
+            HashUtilityError::from_io_error(e, "creating compressed database", Some(output_path.clone()))
+        })?;
+        
+        // Create LZMA encoder with compression level 6 (good balance of speed and compression)
+        let mut encoder = XzEncoder::new(output_file, 6);
+        
+        // Copy data through the encoder
+        let mut reader = BufReader::new(input_file);
+        std::io::copy(&mut reader, &mut encoder).map_err(|e| {
+            HashUtilityError::from_io_error(e, "compressing database", Some(input_path.to_path_buf()))
+        })?;
+        
+        // Finish compression
+        encoder.finish().map_err(|e| {
+            HashUtilityError::from_io_error(e, "finalizing compression", Some(output_path.clone()))
+        })?;
+        
+        Ok(output_path)
+    }
+    
+    /// Open a database file, automatically decompressing if it has .xz extension
+    fn open_database_reader(path: &Path) -> Result<Box<dyn BufRead>, HashUtilityError> {
+        let file = File::open(path).map_err(|e| {
+            HashUtilityError::from_io_error(e, "opening database", Some(path.to_path_buf()))
+        })?;
+        
+        if Self::is_compressed(path) {
+            // Decompress on the fly
+            let decoder = XzDecoder::new(file);
+            Ok(Box::new(BufReader::new(decoder)))
+        } else {
+            // Read normally
+            Ok(Box::new(BufReader::new(file)))
+        }
+    }
+    
     /// Detect the format of a database file by reading its first few lines
     pub fn detect_format(path: &Path) -> Result<DatabaseFormat, HashUtilityError> {
-        let file = File::open(path).map_err(|e| {
-            HashUtilityError::from_io_error(e, "reading database", Some(path.to_path_buf()))
-        })?;
-        let reader = BufReader::new(file);
+        let reader = Self::open_database_reader(path)?;
         
         for line_result in reader.lines().take(10) {
             let line = line_result.map_err(|e| {
@@ -125,10 +185,7 @@ impl DatabaseHandler {
     
     /// Read a standard format database file
     fn read_standard_database(path: &Path) -> Result<HashMap<PathBuf, DatabaseEntry>, HashUtilityError> {
-        let file = File::open(path).map_err(|e| {
-            HashUtilityError::from_io_error(e, "reading database", Some(path.to_path_buf()))
-        })?;
-        let reader = BufReader::new(file);
+        let reader = Self::open_database_reader(path)?;
         let mut database = HashMap::new();
         
         for (line_num, line_result) in reader.lines().enumerate() {
@@ -202,10 +259,7 @@ impl DatabaseHandler {
     /// Header lines start with %
     /// Note: For files with multiple hashes, only the first hash is stored
     fn read_hashdeep_database(path: &Path) -> Result<HashMap<PathBuf, DatabaseEntry>, HashUtilityError> {
-        let file = File::open(path).map_err(|e| {
-            HashUtilityError::from_io_error(e, "reading database", Some(path.to_path_buf()))
-        })?;
-        let reader = BufReader::new(file);
+        let reader = Self::open_database_reader(path)?;
         let mut database = HashMap::new();
         let mut hash_algorithms = Vec::new();
         

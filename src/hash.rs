@@ -19,7 +19,7 @@ pub trait Hasher: Send {
 }
 
 /// Information about a hash algorithm
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct AlgorithmInfo {
     pub name: String,
     pub output_bits: usize,
@@ -437,7 +437,7 @@ impl HashRegistry {
 }
 
 /// Result of a hash computation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct HashResult {
     pub algorithm: String,
     pub hash: String,  // hex-encoded

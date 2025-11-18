@@ -329,13 +329,13 @@
     - Verify that writing and reading hashdeep format preserves data
     - _Requirements: 2.2, 9.5_
 
-- [ ] 23. Add JSON output format
-  - [ ] 23.1 Add serde dependencies
+- [x] 23. Add JSON output format
+  - [x] 23.1 Add serde dependencies
     - Add serde and serde_json to Cargo.toml
     - Derive Serialize for relevant structs
     - _Requirements: 9.1_
   
-  - [ ] 23.2 Implement JSON output option
+  - [x] 23.2 Implement JSON output option
     - Add `--json` flag to all commands
     - Output results as structured JSON
     - Include metadata: timestamp, algorithm, file count, etc.
@@ -347,12 +347,12 @@
     - Verify that JSON output can be parsed back correctly
     - _Requirements: 9.1_
 
-- [ ] 24. Add database compression support
-  - [ ] 24.1 Add compression dependency
+- [x] 24. Add database compression support
+  - [x] 24.1 Add compression dependency
     - Add lzma-rs crate to Cargo.toml for LZMA compression
     - _Requirements: 2.2_
   
-  - [ ] 24.2 Implement automatic database compression
+  - [x] 24.2 Implement automatic database compression
     - Add `--compress` flag to scan command
     - Automatically compress output database with LZMA
     - Use .xz extension for compressed databases

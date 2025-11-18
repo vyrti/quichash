@@ -15,7 +15,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 pub type VerifyError = HashUtilityError;
 
 /// Represents a hash mismatch between expected and actual values
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Mismatch {
     pub path: PathBuf,
     pub expected: String,
@@ -23,7 +23,7 @@ pub struct Mismatch {
 }
 
 /// Report of verification results
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct VerifyReport {
     pub matches: usize,
     pub mismatches: Vec<Mismatch>,
