@@ -29,8 +29,12 @@ glob = "0.3"
 hex = "0.4"
 
 [profile.release]
-opt-level = "z"
-lto = true
+opt-level = 3
+lto = "fat"
 strip = true
 panic = "abort"
 codegen-units = 1
+incremental = false
+
+[profile.bench]
+inherits = "release"
