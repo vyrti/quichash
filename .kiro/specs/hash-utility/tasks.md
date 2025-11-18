@@ -376,10 +376,31 @@
     - Test database compression
     - _Requirements: 1.1, 2.1, 2.2, 9.1_
   
-  - [ ] 25.2 Update documentation
+  - [x] 25.2 Update documentation
     - Add examples for all new features to README
     - Document .hashignore syntax and behavior
     - Document hashdeep format compatibility
     - Document JSON output schema
-    - Document HMAC usage and security considerations
     - _Requirements: 6.1, 6.2_
+
+- [x] 26. Set up GitHub Actions CI/CD pipeline
+  - [x] 26.1 Create GitHub Actions workflow for multi-platform builds
+    - Create `.github/workflows/release.yml` workflow file
+    - Configure matrix builds for: Windows (x86_64, arm), macOS (x86_64, aarch64), Linux (x86_64, arm), FreeBSD (x86_64, arm)
+    - Set up Rust toolchain installation for each platform
+    - Configure cross-compilation where needed
+    - _Requirements: 5.2, 5.3_
+  
+  - [x] 26.2 Implement build and release steps
+    - Build optimized release binaries for each platform
+    - Strip binaries and create compressed archives (tar.gz for Unix, zip for Windows)
+    - Configure manual trigger from Git tags (e.g., `v*` pattern)
+    - Upload build artifacts to GitHub Releases
+    - Generate checksums (SHA256) for all release artifacts
+    - _Requirements: 5.2, 5.3_
+  
+  - [ ]* 26.3 Add automated testing in CI pipeline
+    - Run `cargo test` on all platforms before building release
+    - Run `cargo clippy` for linting
+    - Ensure all tests pass before creating release artifacts
+    - _Requirements: 5.2_
