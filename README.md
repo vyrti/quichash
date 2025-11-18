@@ -93,10 +93,10 @@ All commands support both short and long form flags:
 
 | Short | Long | Description | Commands |
 |-------|------|-------------|----------|
-| `-a` | `--algorithm` | Specify hash algorithm | hash, scan |
-| `-o` | `--output` | Specify output file | hash, scan |
-| `-f` | `--fast` | Enable fast mode (samples 300MB) | hash, scan |
-| `-t` | `--text` | Hash text directly | hash |
+| `-a` | `--algorithm` | Specify hash algorithm | scan |
+| `-o` | `--output` | Specify output file | scan |
+| `-f` | `--fast` | Enable fast mode (samples 300MB) | scan |
+| `-t` | `--text` | Hash text directly | |
 | `-d` | `--directory` | Specify directory | scan, verify |
 | `-b` | `--database` | Specify database file | verify |
 | `-p` | `--parallel` | Enable parallel processing | scan |
