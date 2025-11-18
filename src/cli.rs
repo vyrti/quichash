@@ -15,10 +15,13 @@ use crate::error::HashUtilityError;
 #[command(about = "Cryptographic hash computation and verification tool", long_about = None)]
 #[command(after_help = "EXAMPLES:\n  \
     hash file.txt -a sha256\n  \
-    hash file.txt -f -a sha256          # fast mode\n  \
+    hash file.txt -f -a sha256                              # fast mode\n  \
     hash --text \"hello world\" -a sha256\n  \
     cat file.txt | hash -a sha256\n  \
     hash scan -d /path/to/dir -a sha256 -o hashes.txt\n  \
+    hash scan -d /path/to/dir -o hashes.txt --format hashdeep  # hashdeep format\n  \
+    hash scan -d /path/to/dir -o hashes.txt.xz --compress   # compressed output\n  \
+    hash scan -d /path/to/dir -o hashes.txt --json          # JSON output\n  \
     hash verify -b hashes.txt -d /path/to/dir\n  \
     hash benchmark\n  \
     hash list")]
@@ -26,27 +29,27 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
     
-    /// File to hash (reads from stdin if not provided)
+    /// File to hash (if omitted, reads from stdin for piping)
     #[arg(value_name = "FILE")]
     pub file: Option<PathBuf>,
     
-    /// Text to hash directly
+    /// Hash text string directly instead of a file (e.g., --text "hello world")
     #[arg(short = 't', long = "text", value_name = "TEXT", conflicts_with = "file")]
     pub text: Option<String>,
     
-    /// Hash algorithm(s) to use (can be specified multiple times)
+    /// Hash algorithm to use: md5, sha1, sha256, sha512, sha3-256, blake2b, blake3, xxh3, etc. (use 'hash list' to see all)
     #[arg(short = 'a', long = "algorithm", value_name = "ALGORITHM", default_value = "sha256")]
     pub algorithms: Vec<String>,
     
-    /// Output file (optional, defaults to stdout)
+    /// Write output to file instead of stdout
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     pub output: Option<PathBuf>,
     
-    /// Enable fast mode for large files (samples first, middle, and last 100MB)
+    /// Fast mode: hash only first/middle/last 100MB of large files (faster but less thorough)
     #[arg(short = 'f', long = "fast")]
     pub fast: bool,
     
-    /// Output results in JSON format
+    /// Output results as JSON instead of plain text
     #[arg(long = "json")]
     pub json: bool,
 }
@@ -59,35 +62,35 @@ pub enum Command {
     /// Recursively scans a directory and computes hashes for all files,
     /// storing the results in a plain text database file.
     Scan {
-        /// Directory to scan
+        /// Directory to scan recursively for files
         #[arg(short = 'd', long = "directory", value_name = "DIR")]
         directory: PathBuf,
         
-        /// Hash algorithm to use
+        /// Hash algorithm to use (use 'hash list' to see all available algorithms)
         #[arg(short = 'a', long = "algorithm", value_name = "ALGORITHM", default_value = "sha256")]
         algorithm: String,
         
-        /// Output database file
+        /// Output database file path (use .xz extension with --compress for automatic compression)
         #[arg(short = 'o', long = "output", value_name = "FILE")]
         output: PathBuf,
         
-        /// Enable parallel processing
+        /// Use parallel processing to hash multiple files simultaneously (faster on multi-core systems)
         #[arg(short = 'p', long = "parallel")]
         parallel: bool,
         
-        /// Enable fast mode for large files (samples first, middle, and last 100MB)
+        /// Fast mode: hash only first/middle/last 100MB of large files (faster but less thorough)
         #[arg(short = 'f', long = "fast")]
         fast: bool,
         
-        /// Output format (standard or hashdeep)
+        /// Output format: 'standard' (hash filepath) or 'hashdeep' (CSV format with size, hash, filename)
         #[arg(long = "format", value_name = "FORMAT", default_value = "standard")]
         format: String,
         
-        /// Output results in JSON format
+        /// Output results as JSON with metadata instead of plain text
         #[arg(long = "json")]
         json: bool,
         
-        /// Compress output database with LZMA (.xz extension)
+        /// Compress output database with LZMA compression (creates .xz file, saves ~70% space)
         #[arg(long = "compress")]
         compress: bool,
     },
@@ -97,15 +100,15 @@ pub enum Command {
     /// Compares current file hashes against a stored database to detect
     /// modifications, deletions, and new files.
     Verify {
-        /// Hash database file
+        /// Hash database file to compare against (supports standard, hashdeep, and compressed .xz formats)
         #[arg(short = 'b', long = "database", value_name = "FILE")]
         database: PathBuf,
         
-        /// Directory to verify
+        /// Directory to verify against the database (checks for modifications, deletions, and new files)
         #[arg(short = 'd', long = "directory", value_name = "DIR")]
         directory: PathBuf,
         
-        /// Output results in JSON format
+        /// Output verification report as JSON instead of plain text
         #[arg(long = "json")]
         json: bool,
     },
@@ -115,11 +118,11 @@ pub enum Command {
     /// Tests all supported hash algorithms and displays their throughput
     /// on the current hardware.
     Benchmark {
-        /// Size of test data in MB
+        /// Size of test data in megabytes (larger = more accurate, but slower)
         #[arg(short = 's', long = "size", value_name = "MB", default_value = "100")]
         size_mb: usize,
         
-        /// Output results in JSON format
+        /// Output benchmark results as JSON instead of formatted table
         #[arg(long = "json")]
         json: bool,
     },
@@ -129,7 +132,7 @@ pub enum Command {
     /// Displays all supported hash algorithms with their properties,
     /// including output size and post-quantum resistance status.
     List {
-        /// Output results in JSON format
+        /// Output algorithm list as JSON instead of formatted table
         #[arg(long = "json")]
         json: bool,
     },

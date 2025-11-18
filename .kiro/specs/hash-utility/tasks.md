@@ -238,6 +238,7 @@
     - Add hmac crate to Cargo.toml
     - Add support for HMAC variants of existing algorithms
     - _Requirements: 1.1_
+    - **STATUS: NOT IMPLEMENTED - Missing from CLI**
   
   - [ ] 18.2 Implement HMAC computation
     - Add `--key` flag to hash command for keyed hashing
@@ -245,6 +246,7 @@
     - Support usage: `hash -a sha256 --key "secret" -f file.txt`
     - Register HMAC algorithms in HashRegistry with "hmac-" prefix
     - _Requirements: 1.1_
+    - **STATUS: NOT IMPLEMENTED - Missing from CLI**
   
   - [ ]* 18.3 Write property test for HMAC correctness
     - **Property: HMAC key sensitivity**
@@ -273,6 +275,7 @@
   - [ ] 20.1 Add base64 dependency
     - Add base64 crate to Cargo.toml
     - _Requirements: 9.1_
+    - **STATUS: NOT IMPLEMENTED - Missing from CLI**
   
   - [ ] 20.2 Implement Base64 output option
     - Add `--base64` flag to hash, scan, and verify commands
@@ -280,6 +283,7 @@
     - Update DatabaseHandler to support both hex and Base64 formats
     - Auto-detect format when reading database files
     - _Requirements: 9.1_
+    - **STATUS: NOT IMPLEMENTED - Missing from CLI**
   
   - [ ]* 20.3 Write property test for Base64 encoding
     - **Property: Base64 round-trip**
