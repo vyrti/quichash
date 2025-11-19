@@ -302,17 +302,23 @@ impl ScanEngine {
         let files_skipped = Arc::new(Mutex::new(0usize));
         let total_bytes = Arc::new(Mutex::new(0u64));
         
-        // Create progress bar (we'll update the length as we discover files)
+        // Create progress bar (we'll update the style once discovery is complete)
         let pb = ProgressBar::new(0);
+        // Start with "Counting..." style
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos} files | Processed: {msg}")
+                .template("[{elapsed_precise}] Counting... {pos} files found | Processing: {msg}")
                 .unwrap()
                 .progress_chars("=>-")
         );
         
-        // Create bounded channel with backpressure (buffer size: 1000 entries)
-        let (sender, receiver) = bounded::<PathBuf>(1000);
+        // Create bounded channel with backpressure (buffer size: 10000 entries)
+        // Larger buffer helps with very large directory scans
+        let (sender, receiver) = bounded::<PathBuf>(10000);
+        
+        // Track total files discovered
+        let total_files_discovered = Arc::new(Mutex::new(0usize));
+        let discovery_complete = Arc::new(Mutex::new(false));
         
         // Capture fast_mode for use in closure
         let fast_mode = self.fast_mode;
@@ -322,9 +328,27 @@ impl ScanEngine {
         let use_ignore = self.use_ignore;
         let output_to_exclude = output_absolute.to_path_buf();
         
+        // Clone for walker thread
+        let total_files_discovered_walker = Arc::clone(&total_files_discovered);
+        let discovery_complete_walker = Arc::clone(&discovery_complete);
+        let pb_walker = pb.clone();
+        
         // Spawn walker thread using jwalk to traverse directories
         let walker_handle = thread::spawn(move || {
-            Self::walk_directory_streaming(&walker_root, sender, use_ignore, Some(&output_to_exclude))
+            let result = Self::walk_directory_streaming(&walker_root, sender, use_ignore, Some(&output_to_exclude), Arc::clone(&total_files_discovered_walker));
+            
+            // Mark discovery as complete and update progress bar with total and new style
+            let total = *total_files_discovered_walker.lock().unwrap();
+            pb_walker.set_length(total as u64);
+            pb_walker.set_style(
+                ProgressStyle::default_bar()
+                    .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} files ({percent}%) | Processed: {msg}")
+                    .unwrap()
+                    .progress_chars("=>-")
+            );
+            *discovery_complete_walker.lock().unwrap() = true;
+            
+            result
         });
         
         // Clone Arc references for use in parallel closure
@@ -406,8 +430,16 @@ impl ScanEngine {
             .collect();
         
         // Wait for walker thread to complete
-        if let Err(e) = walker_handle.join() {
-            eprintln!("Warning: Walker thread panicked: {:?}", e);
+        // Note: The walker thread should already be done since we consumed all items from the channel
+        match walker_handle.join() {
+            Ok(walk_result) => {
+                if let Err(e) = walk_result {
+                    eprintln!("Warning: Walker thread encountered error: {}", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Walker thread panicked: {:?}", e);
+            }
         }
         
         let duration = start_time.elapsed();
@@ -500,6 +532,7 @@ impl ScanEngine {
         sender: Sender<PathBuf>,
         use_ignore: bool,
         exclude_file: Option<&Path>,
+        total_files_discovered: Arc<Mutex<usize>>,
     ) -> Result<(), ScanError> {
         // Load .hashignore patterns if enabled
         let ignore_handler = if use_ignore {
@@ -518,8 +551,14 @@ impl ScanEngine {
         let canonical_exclude = exclude_file.and_then(|p| p.canonicalize().ok());
         
         // Use jwalk for parallel directory traversal
-        // Set parallelism to 1 to avoid nested rayon issues
-        for entry_result in WalkDir::new(root).parallelism(jwalk::Parallelism::Serial) {
+        // Use RayonNewPool to parallelize directory walking in a separate thread pool
+        // This avoids conflicts with the main rayon pool used for hashing
+        // Configure to follow links and not skip hidden files
+        for entry_result in WalkDir::new(root)
+            .parallelism(jwalk::Parallelism::RayonNewPool(0)) // 0 = use default thread count
+            .skip_hidden(false)  // Don't skip hidden files
+            .follow_links(false) // Don't follow symlinks to avoid loops
+        {
             match entry_result {
                 Ok(entry) => {
                     let path = entry.path();
@@ -550,10 +589,14 @@ impl ScanEngine {
                     
                     // Send file path to channel
                     // If channel is full, this will block (backpressure)
-                    if sender.send(path).is_err() {
+                    if let Err(_) = sender.send(path) {
                         // Receiver has been dropped, stop walking
                         break;
                     }
+                    
+                    // Track total files discovered
+                    let mut total = total_files_discovered.lock().unwrap();
+                    *total += 1;
                 }
                 Err(e) => {
                     // Log errors during directory scans without stopping
