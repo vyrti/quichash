@@ -14,6 +14,7 @@ High-performance cryptographic hash utility with SIMD optimization.
 - **Directory Scanning**: Recursive hashing with parallel processing by default
 - **Verification**: Compare hashes against stored database
 - **Database Comparison**: Compare two databases to identify changes, duplicates, and differences
+- **Deduplication**: Find and report duplicate files based on hash comparison
 - **.hashignore**: Exclude files using gitignore patterns
 - **Formats**: Standard, hashdeep, JSON
 - **Compression**: LZMA compression for databases
@@ -55,7 +56,7 @@ hash myfile.txt                              # Uses blake3 by default
 hash myfile.txt -a sha256                    # Specify algorithm
 hash myfile.txt -a sha256 -a blake3          # Multiple algorithms
 hash largefile.iso -f                        # Fast mode
-hash myfile.txt -o output.txt                # Save to file
+hash myfile.txt -b output.txt                # Save to file
 hash myfile.txt --json                       # JSON output
 ```
 
@@ -150,7 +151,7 @@ Compare two hash databases to identify changes, duplicates, and differences:
 
 ```bash
 hash compare db1.txt db2.txt                          # Compare two databases
-hash compare db1.txt db2.txt -o report.txt            # Save report to file
+hash compare db1.txt db2.txt -b report.txt            # Save report to file
 hash compare db1.txt db2.txt --format json            # JSON output
 hash compare db1.txt.xz db2.txt.xz                    # Compare compressed databases
 hash compare db1.txt db2.txt.xz                       # Mix compressed and plain
@@ -162,6 +163,19 @@ Output shows:
 - **Removed**: Files in DB1 but not DB2
 - **Added**: Files in DB2 but not DB1
 - **Duplicates**: Files with same hash within each database
+
+### Deduplicate Files
+
+Find and report duplicate files based on hash comparison:
+
+```bash
+hash dedup -d /path/to/dir                # Find duplicates (dry-run)
+hash dedup -d /path/to/dir -b report.txt  # Save report to file
+hash dedup -d /path/to/dir -f             # Fast mode
+hash dedup -d /path/to/dir --json         # JSON output
+```
+
+Output shows duplicate groups with file paths and sizes.
 
 ### Benchmark & List
 
@@ -179,12 +193,12 @@ hash list --json                  # JSON output
 | | `FILE` | File or wildcard pattern to hash (omit for stdin) |
 | | `-t, --text <TEXT>` | Hash text string |
 | | `-a, --algorithm <ALG>` | Algorithm (default: blake3) |
-| | `-o, --output <FILE>` | Write to file |
+| | `-b, --output <FILE>` | Write to file |
 | | `-f, --fast` | Fast mode (samples 300MB) |
 | | `--json` | JSON output |
 | scan | `-d, --directory <DIR>` | Directory or wildcard pattern to scan |
 | | `-a, --algorithm <ALG>` | Algorithm (default: blake3) |
-| | `-o, --output <FILE>` | Output database |
+| | `-b, --database <FILE>` | Output database |
 | | `--hdd` | Sequential mode for old HDDs (default: parallel) |
 | | `-f, --fast` | Fast mode |
 | | `--format <FMT>` | standard or hashdeep |
@@ -195,8 +209,12 @@ hash list --json                  # JSON output
 | | `--json` | JSON output |
 | compare | `DATABASE1` | First database file (supports .xz) |
 | | `DATABASE2` | Second database file (supports .xz) |
-| | `-o, --output <FILE>` | Write report to file |
+| | `-b, --output <FILE>` | Write report to file |
 | | `--format <FMT>` | plain-text, json, or hashdeep |
+| dedup | `-d, --directory <DIR>` | Directory to scan for duplicates |
+| | `-f, --fast` | Fast mode |
+| | `-b, --output <FILE>` | Write report to file |
+| | `--json` | JSON output |
 | benchmark | `-s, --size <MB>` | Data size (default: 100) |
 | | `--json` | JSON output |
 
@@ -213,7 +231,7 @@ node_modules/
 !important.log
 EOF
 
-hash scan -d /path/to/dir -a sha256 -o hashes.db
+hash scan -d /path/to/dir -a sha256 -b hashes.db
 ```
 
 Patterns: `*.ext`, `dir/`, `!pattern`, `#comments`, `**/*.ext`
@@ -265,34 +283,34 @@ Samples 300MB (first/middle/last 100MB) instead of entire file.
 hash downloaded-file.iso -a sha256
 
 # Backup verification (parallel by default)
-hash scan -d /data -o backup.db
+hash scan -d /data -b backup.db
 hash verify -b backup.db -d /data
 
 # Backup on old HDD (sequential processing)
-hash scan -d /data -o backup.db --hdd
+hash scan -d /data -b backup.db --hdd
 hash verify -b backup.db -d /data
 
 # Monitor changes
-hash scan -d /etc/config -o baseline.db
+hash scan -d /etc/config -b baseline.db
 hash verify -b baseline.db -d /etc/config
 
 # Compare two snapshots
-hash scan -d /data -o snapshot1.db
+hash scan -d /data -b snapshot1.db
 # ... time passes ...
-hash scan -d /data -o snapshot2.db
-hash compare snapshot1.db snapshot2.db -o changes.txt
+hash scan -d /data -b snapshot2.db
+hash compare snapshot1.db snapshot2.db -b changes.txt
 
 # Find duplicates
-hash scan -d /media -o media.db
+hash scan -d /media -b media.db
 hash compare media.db media.db                    # Compare with itself
 
 # Forensic analysis
-hash scan -d /evidence -a sha3-256 -o evidence.db
-hash scan -d /evidence -a sha256 -o evidence.txt --format hashdeep
+hash scan -d /evidence -a sha3-256 -b evidence.db
+hash scan -d /evidence -a sha256 -b evidence.txt --format hashdeep
 
 # Quick checksums (blake3 is default)
 hash large-backup.tar.gz -f
-hash scan -d /backups -o checksums.db -f
+hash scan -d /backups -b checksums.db -f
 
 # Automation
 hash verify -b hashes.db -d /data --json | jq '.report.mismatches'
@@ -331,7 +349,7 @@ hash "*.txt" -a sha256                       # All .txt files in current dir
 hash "data/*.bin" -a sha256                  # All .bin files in data/
 hash "file?.txt" -a sha256                   # file1.txt, fileA.txt, etc.
 hash "[abc]*.jpg" -a sha256                  # Files starting with a, b, or c
-hash scan -d "backup/*/data" -a sha256 -o db.txt  # Multiple directories
+hash scan -d "backup/*/data" -a sha256 -b db.txt  # Multiple directories
 hash verify -b "*.db" -d "data/*"            # All .db files against all data dirs
 ```
 

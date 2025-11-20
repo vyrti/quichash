@@ -27,7 +27,7 @@ use crate::error::HashUtilityError;
     hash verify -b hashes.txt -d /path/to/dir               # parallel by default\n  \
     hash verify -b hashes.txt -d /path/to/dir --hdd         # sequential for old HDDs\n  \
     hash compare db1.txt db2.txt                            # compare two databases\n  \
-    hash compare db1.txt db2.txt -o report.txt --format json  # JSON output\n  \
+    hash compare db1.txt db2.txt -b report.txt --format json  # JSON output\n  \
     hash dedup -d /path/to/dir                              # find duplicates\n  \
     hash dedup -d /path/to/dir --fast --json                # fast mode with JSON output\n  \
     hash benchmark\n  \
@@ -50,7 +50,7 @@ pub struct Cli {
     pub algorithms: Vec<String>,
     
     /// Write output to file instead of stdout
-    #[arg(short = 'o', long = "output", value_name = "FILE")]
+    #[arg(short = 'b', long = "output", value_name = "FILE")]
     pub output: Option<PathBuf>,
     
     /// Fast mode: hash only first/middle/last 100MB of large files (faster but less thorough)
@@ -165,7 +165,7 @@ pub enum Command {
         database2: PathBuf,
         
         /// Write comparison report to file instead of stdout
-        #[arg(short = 'o', long = "output", value_name = "FILE")]
+        #[arg(short = 'b', long = "output", value_name = "FILE")]
         output: Option<PathBuf>,
         
         /// Output format: 'plain-text' (default), 'json', or 'hashdeep'
@@ -192,7 +192,7 @@ pub enum Command {
         fast: bool,
         
         /// Write output to file instead of stdout
-        #[arg(short = 'o', long = "output", value_name = "FILE")]
+        #[arg(short = 'b', long = "output", value_name = "FILE")]
         output: Option<PathBuf>,
         
         /// Output results as JSON instead of plain text
@@ -263,7 +263,7 @@ mod tests {
     
     #[test]
     fn test_parse_hash_command_with_output() {
-        let args = vec!["hash", "test.txt", "-a", "sha256", "-o", "output.txt"];
+        let args = vec!["hash", "test.txt", "-a", "sha256", "-b", "output.txt"];
         let cli = Cli::try_parse_from(args).unwrap();
         
         assert_eq!(cli.command, None);
@@ -735,7 +735,7 @@ mod tests {
     
     #[test]
     fn test_parse_hash_command_with_text_and_output() {
-        let args = vec!["hash", "-t", "hello world", "-a", "sha256", "-o", "output.txt"];
+        let args = vec!["hash", "-t", "hello world", "-a", "sha256", "-b", "output.txt"];
         let cli = Cli::try_parse_from(args).unwrap();
         
         assert_eq!(cli.command, None);
@@ -764,7 +764,7 @@ mod tests {
     
     #[test]
     fn test_parse_compare_command_with_output() {
-        let args = vec!["hash", "compare", "db1.txt", "db2.txt", "-o", "report.txt"];
+        let args = vec!["hash", "compare", "db1.txt", "db2.txt", "-b", "report.txt"];
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
@@ -828,7 +828,7 @@ mod tests {
     
     #[test]
     fn test_parse_compare_command_with_all_options() {
-        let args = vec!["hash", "compare", "db1.txt", "db2.txt", "-o", "report.json", "--format", "json"];
+        let args = vec!["hash", "compare", "db1.txt", "db2.txt", "-b", "report.json", "--format", "json"];
         let cli = Cli::try_parse_from(args).unwrap();
         
         match cli.command {
