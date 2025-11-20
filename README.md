@@ -5,10 +5,10 @@ High-performance cryptographic hash utility with SIMD optimization.
 ## Features
 
 - **Algorithms**: MD5, SHA-1, SHA-2/3, BLAKE2/3, xxHash3/128
-- **Defaults**: BLAKE3 algorithm, parallel processing (2-4x faster)
+- **Defaults**: BLAKE3 algorithm, parallel processing
 - **HDD Mode**: Sequential processing with `--hdd` flag for old mechanical drives
 - **SIMD**: Automatic hardware acceleration (SSE, AVX, AVX2, AVX-512, NEON)
-- **Optional Fast Mode**: Quick hashing for large files (samples 300MB) for edge cases
+- **Optional Fast Mode**: Quick hashing for large files (samples 300MB) ONLY for edge cases
 - **Flexible Input**: Files, stdin, or text strings
 - **Wildcard Patterns**: Support for `*`, `?`, and `[...]` patterns in file/directory arguments
 - **Directory Scanning**: Recursive hashing with parallel processing by default
