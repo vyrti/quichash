@@ -11,7 +11,7 @@ use crate::error::HashUtilityError;
 /// scanning directories, and verifying file integrity.
 #[derive(Parser, Debug)]
 #[command(name = "hash")]
-#[command(version = "0.1.0")]
+#[command(version)]
 #[command(about = "Cryptographic hash computation and verification tool", long_about = None)]
 #[command(after_help = "EXAMPLES:\n  \
     hash file.txt                                           # uses blake3 by default\n  \
@@ -28,6 +28,8 @@ use crate::error::HashUtilityError;
     hash verify -b hashes.txt -d /path/to/dir --hdd         # sequential for old HDDs\n  \
     hash compare db1.txt db2.txt                            # compare two databases\n  \
     hash compare db1.txt db2.txt -o report.txt --format json  # JSON output\n  \
+    hash dedup -d /path/to/dir                              # find duplicates\n  \
+    hash dedup -d /path/to/dir --fast --json                # fast mode with JSON output\n  \
     hash benchmark\n  \
     hash list")]
 pub struct Cli {
@@ -169,6 +171,33 @@ pub enum Command {
         /// Output format: 'plain-text' (default), 'json', or 'hashdeep'
         #[arg(long = "format", value_name = "FORMAT", default_value = "plain-text")]
         format: String,
+    },
+    
+    /// Display version information
+    /// 
+    /// Shows the current version of the Hash Utility.
+    Version,
+    
+    /// Find duplicate files in a directory
+    /// 
+    /// Scans a directory recursively and identifies files with identical content
+    /// by comparing their hash values. Always uses BLAKE3 algorithm for speed and security.
+    Dedup {
+        /// Directory to scan for duplicates
+        #[arg(short = 'd', long = "directory", value_name = "DIR")]
+        directory: PathBuf,
+        
+        /// Fast mode: hash only first/middle/last 100MB of large files (faster but less thorough)
+        #[arg(short = 'f', long = "fast")]
+        fast: bool,
+        
+        /// Write output to file instead of stdout
+        #[arg(short = 'o', long = "output", value_name = "FILE")]
+        output: Option<PathBuf>,
+        
+        /// Output results as JSON instead of plain text
+        #[arg(long = "json")]
+        json: bool,
     },
 }
 
@@ -836,5 +865,18 @@ mod tests {
         let result = Cli::try_parse_from(args);
         
         assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_parse_version_command() {
+        let args = vec!["hash", "version"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        
+        match cli.command {
+            Some(Command::Version) => {
+                // Success - version command parsed correctly
+            }
+            _ => panic!("Expected Version command"),
+        }
     }
 }

@@ -599,3 +599,80 @@
     - Measure throughput improvement on multi-core systems
     - Document expected performance gains in README
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
+
+- [x] 37. Implement version command
+  - [x] 37.1 Add version command to CLI
+    - Add Version variant to Command enum
+    - Add clap attribute to display version from Cargo.toml
+    - Support `version` flag, not '-v' or "--version"
+    - Display version in format: `hash v{version}`
+    - _Requirements: 6.1, 6.2_
+
+- [ ] 38. Implement update command for self-updating from GitHub releases
+  - [ ] 38.1 Add self-update dependencies
+    - Add reqwest crate with blocking feature for HTTP requests
+    - Add serde and serde_json for parsing GitHub API responses
+    - Add zip or tar crate for extracting downloaded archives
+    - _Requirements: 6.1, 6.2_
+  
+  - [ ] 38.2 Create UpdateEngine for GitHub release management
+    - Implement function to query GitHub API for latest release
+    - Parse release JSON to extract version number and download URL
+    - Compare current version with latest version
+    - Download appropriate binary for current platform (OS + architecture)
+    - Verify download integrity using SHA256 checksums from release
+    - _Requirements: 6.1, 6.2_
+  
+  - [ ] 38.3 Implement binary replacement logic
+    - Extract downloaded archive to temporary location
+    - Replace current executable with new binary
+    - Handle platform-specific executable permissions (Unix: chmod +x)
+    - Handle Windows file locking issues (may require restart)
+    - Display success message with old and new version numbers
+    - _Requirements: 6.1, 6.2_
+  
+  - [ ] 38.4 Add update command to CLI
+    - Add Update variant to Command enum
+    - Add help text explaining self-update functionality
+    - Add `--check` flag to only check for updates without installing
+    - Display current version and latest available version
+    - _Requirements: 6.1, 6.2_
+  
+  - [ ]* 38.5 Write property test for version comparison
+    - **Property: Version comparison correctness**
+    - Verify that version parsing and comparison works correctly
+    - Test with various version formats (semver)
+    - _Requirements: 6.1_
+
+- [-] 39. Implement dedup command for finding duplicate files
+  - [x] 39.1 Create DedupEngine for duplicate detection
+    - Implement function to scan directory and compute hashes
+    - Use BLAKE3 as default algorithm (fast and secure)
+    - Support -f, --fast flags to use fast mode for large files
+    - Group files by hash value to identify duplicates
+    - Create DuplicateGroup struct with hash and list of file paths
+    - Track statistics: total files scanned, duplicate groups found, wasted space
+    - _Requirements: 2.1, 2.4, 2.5_
+  
+  - [x] 39.2 Implement dedup output formatting
+    - Display duplicate groups with hash value and file paths
+    - Show file sizes and total wasted space per group
+    - Format output clearly with group separators
+    - Sort groups by wasted space (largest first)
+    - Display summary: total duplicates, total wasted space
+    - _Requirements: 2.5_
+  
+  - [x] 39.3 Add dedup command to CLI
+    - Add Dedup variant to Command enum
+    - Define arguments: directory path, --fast flag, --output flag
+    - Do NOT allow --algorithm flag (always use BLAKE3)
+    - Add help text explaining dedup functionality
+    - Support JSON output format with --json flag
+    - _Requirements: 1.1, 2.1, 6.1, 6.2_
+  
+  - [x] 39.4 Integrate dedup command into dispatcher
+    - Route Dedup command to DedupEngine
+    - Handle fast mode flag appropriately
+    - Write output to file or stdout based on --output flag
+    - Display progress during scanning
+    - _Requirements: 2.1, 2.5_

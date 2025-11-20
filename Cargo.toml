@@ -1,6 +1,6 @@
 [package]
 name = "hash"
-version = "0.0.12"
+version = "0.0.13"
 edition = "2021"
 
 [[bin]]
@@ -30,6 +30,7 @@ memmap2 = "0.9"
 
 [dev-dependencies]
 hex = "0.4"
+tempfile = "3.13"
 
 [profile.release]
 opt-level = 3
