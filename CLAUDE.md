@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hash Utility (hash-rs) is a Rust command-line application for cryptographic hash computation. It supports multiple algorithms (MD5, SHA-1/2/3, BLAKE2/3, xxHash3/128), parallel processing, and various database formats.
+QuicHash (quichash) is a Rust command-line application for cryptographic hash computation. It supports multiple algorithms (MD5, SHA-1/2/3, BLAKE2/3, xxHash3/128), parallel processing, and various database formats.
 
 ## Build Commands
 

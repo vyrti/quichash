@@ -411,15 +411,15 @@ hash verify -b "*.db" -d "data/*"            # All .db files against all data di
 
 ## Contributing
 
-We welcome contributions to hash-rs! To contribute, you must certify that you have the right to submit your contribution and agree to license it under the project's dual MIT/Apache-2.0 license.
+We welcome contributions to QuicHash! To contribute, you must certify that you have the right to submit your contribution and agree to license it under the project's dual MIT/Apache-2.0 license.
 
 ### Developer Certificate of Origin (DCO)
 
-hash-rs uses the [Developer Certificate of Origin (DCO)](https://developercertificate.org/) process. This is a lightweight way for contributors to certify that they wrote or otherwise have the right to submit code or documentation to an open source project.
+QuicHash uses the [Developer Certificate of Origin (DCO)](https://developercertificate.org/) process. This is a lightweight way for contributors to certify that they wrote or otherwise have the right to submit code or documentation to an open source project.
 
 #### Inbound = Outbound License
 
-All contributions to hash-rs are made under the same dual MIT/Apache-2.0 license as the project itself. By signing off on your commits, you agree that your contributions will be licensed under these same terms, with no additional restrictions.
+All contributions to QuicHash are made under the same dual MIT/Apache-2.0 license as the project itself. By signing off on your commits, you agree that your contributions will be licensed under these same terms, with no additional restrictions.
 
 #### How to Sign Off Commits
 
@@ -439,7 +439,7 @@ $ git commit -s -m 'This is my commit message'
 
 ## License
 
-Hash-rs is dual-licensed under either:
+QuicHash is dual-licensed under either:
 
 - **MIT License** ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 - **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
