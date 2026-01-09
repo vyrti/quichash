@@ -1,4 +1,4 @@
-# Hash Utility
+# QuicHash
 
 High-performance cryptographic hash utility with SIMD optimization.
 
