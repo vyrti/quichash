@@ -1,7 +1,14 @@
 [package]
-name = "hash"
-version = "0.0.16"
+name = "hash-rs"
+version = "0.0.17"
 edition = "2021"
+description = "High-performance cryptographic hash utility with SIMD optimization"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vyrti/hash-rs"
+homepage = "https://github.com/vyrti/hash-rs"
+readme = "README.md"
+keywords = ["hash", "blake3", "sha256", "checksum", "crypto"]
+categories = ["command-line-utilities", "cryptography"]
 
 [[bin]]
 name = "hash"
