@@ -5,63 +5,70 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      task_to_run:
+        description: 'Which part of the workflow to run'
+        type: choice
+        options:
+          - release
+          - docker
+        required: true
+        default: 'release'
+      tag_name:
+        description: 'Required for "release" or "docker" task: The tag for the action (e.g., v1.0.1)'
+        required: false
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  BINARY_NAME: hash
 
 jobs:
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-  build:
-    name: Build ${{ matrix.target }}
-    needs: test
-    runs-on: ${{ matrix.os }}
+  # ===================================================================
+  # Job 1: Build Release Artifacts
+  # ===================================================================
+  build_release_artifacts:
+    name: Build release for ${{ matrix.target }}
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.task_to_run == 'release')
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Windows builds
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            archive: zip
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            archive: zip
-          
-          # macOS builds
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            archive: tar.gz
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            archive: tar.gz
-          
-          # Linux builds
-          - os: ubuntu-latest
+          - runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            archive: tar.gz
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            archive: tar.gz
-            cross: true
-          - os: ubuntu-latest
+            os-arch: linux-x86_64
+            asset_ext: .tar.gz
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            os-arch: windows-x86_64
+            asset_ext: .exe
+          - runner: macos-15
+            target: x86_64-apple-darwin
+            os-arch: macos-x86_64
+            asset_ext: .tar.gz
+          - runner: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            archive: tar.gz
-            cross: true
-          
-          # FreeBSD builds
-          - os: ubuntu-latest
+            os-arch: linux-arm64
+            asset_ext: .tar.gz
+          - runner: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            os-arch: linux-armv7
+            asset_ext: .tar.gz
+          - runner: windows-latest
+            target: aarch64-pc-windows-msvc
+            os-arch: windows-arm64
+            asset_ext: .exe
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            os-arch: macos-arm64
+            asset_ext: .tar.gz
+          - runner: ubuntu-latest
             target: x86_64-unknown-freebsd
-            archive: tar.gz
+            os-arch: freebsd-x86_64
+            asset_ext: .tar.gz
             cross: true
 
     steps:
@@ -73,124 +80,183 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: matrix.cross
-        run: |
-          cargo install cross --git https://github.com/cross-rs/cross
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ matrix.target }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build release binary
+      - name: Install dependencies for ARM cross-compile (Linux)
+        if: runner.os == 'Linux' && (matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'armv7-unknown-linux-gnueabihf')
         run: |
-          echo "Building for target: ${{ matrix.target }}"
-          echo "Using cross: ${{ matrix.cross }}"
-          if [ "${{ matrix.cross }}" = "true" ]; then
-            echo "Using cross-compilation..."
-            cross build --release --target ${{ matrix.target }} --verbose
+          sudo apt-get update
+          if [ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          elif [ "${{ matrix.target }}" == "armv7-unknown-linux-gnueabihf" ]; then
+            sudo apt-get install -y gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
+          fi
+
+      - name: Configure cross-linker (Linux ARM)
+        if: runner.os == 'Linux' && (matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'armv7-unknown-linux-gnueabihf')
+        run: |
+          mkdir -p ~/.cargo
+          if [ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]; then
+            echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
+            echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+          elif [ "${{ matrix.target }}" == "armv7-unknown-linux-gnueabihf" ]; then
+            echo '[target.armv7-unknown-linux-gnueabihf]' >> ~/.cargo/config.toml
+            echo 'linker = "arm-linux-gnueabihf-gcc"' >> ~/.cargo/config.toml
+          fi
+
+      - name: Install cross (for FreeBSD)
+        if: matrix.cross == true
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build binary
+        run: |
+          if [ "${{ matrix.cross }}" == "true" ]; then
+            cross build --release --target ${{ matrix.target }}
           else
-            echo "Using native cargo build..."
-            cargo build --release --target ${{ matrix.target }} --verbose
+            cargo build --release --target ${{ matrix.target }}
           fi
-          echo "Build completed successfully"
-          ls -lah target/${{ matrix.target }}/release/
         shell: bash
 
-      - name: Get binary name and path
-        id: binary
+      - name: Package artifacts
+        shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "name=hash.exe" >> $GITHUB_OUTPUT
-            echo "path=target/${{ matrix.target }}/release/hash.exe" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ -z "${{ github.event.inputs.tag_name }}" ]; then
+              echo "Error: The 'tag_name' input is required when running the 'release' task."
+              exit 1
+            fi
+            VERSION_TAG="${{ github.event.inputs.tag_name }}"
           else
-            echo "name=hash" >> $GITHUB_OUTPUT
-            echo "path=target/${{ matrix.target }}/release/hash" >> $GITHUB_OUTPUT
+            VERSION_TAG="${{ github.ref_name }}"
           fi
-        shell: bash
-
-      - name: Strip binary (Unix)
-        if: matrix.os != 'windows-latest'
-        run: |
-          if [ "${{ matrix.cross }}" = "true" ]; then
-            echo "Skipping strip for cross-compiled binary"
+          VERSION=${VERSION_TAG#v}
+          echo "Building artifacts for version: $VERSION_TAG"
+          BINARY_PATH_PREFIX="target/${{ matrix.target }}/release"
+          ASSET_NAME="${{ env.BINARY_NAME }}-${{ matrix.os-arch }}${{ matrix.asset_ext }}"
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            BINARY_FILE="${{ env.BINARY_NAME }}.exe"
+            cp "$BINARY_PATH_PREFIX/$BINARY_FILE" "./$ASSET_NAME"
           else
-            strip ${{ steps.binary.outputs.path }}
+            tar -czf "$ASSET_NAME" -C "$BINARY_PATH_PREFIX" "${{ env.BINARY_NAME }}"
           fi
-        shell: bash
 
-      - name: Create archive name
-        id: archive
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
-            VERSION="dev"
-          fi
-          ARCHIVE_NAME="hash-${VERSION}-${{ matrix.target }}"
-          echo "name=${ARCHIVE_NAME}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - name: Create tar.gz archive (Unix)
-        if: matrix.archive == 'tar.gz'
-        run: |
-          mkdir -p dist
-          cp ${{ steps.binary.outputs.path }} dist/${{ steps.binary.outputs.name }}
-          cp README.md LICENSE dist/ 2>/dev/null || true
-          cd dist
-          tar czf ../${{ steps.archive.outputs.name }}.tar.gz *
-        shell: bash
-
-      - name: Create zip archive (Windows)
-        if: matrix.archive == 'zip'
-        run: |
-          mkdir -p dist
-          cp ${{ steps.binary.outputs.path }} dist/${{ steps.binary.outputs.name }}
-          cp README.md LICENSE dist/ 2>/dev/null || true
-          cd dist
-          7z a ../${{ steps.archive.outputs.name }}.zip *
-        shell: bash
-
-      - name: Verify artifacts
-        run: |
-          echo "Verifying artifacts before upload..."
-          ls -lah ${{ steps.archive.outputs.name }}.${{ matrix.archive }}
-          echo "Artifacts verified successfully"
-        shell: bash
-
-      - name: Upload artifacts
+      - name: Upload artifact for release
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.archive.outputs.name }}
-          path: ${{ steps.archive.outputs.name }}.${{ matrix.archive }}
-          if-no-files-found: error
+          name: release-artifact-${{ matrix.os-arch }}
+          path: ${{ env.BINARY_NAME }}-*
 
-  release:
-    name: Create Release
-    needs: build
+  # ===================================================================
+  # Job 2: Create GitHub Release
+  # ===================================================================
+  create_github_release:
+    name: Create GitHub Release
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.task_to_run == 'release')
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: build_release_artifacts
     permissions:
       contents: write
-    
+
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create GitHub Release and Upload Artifacts
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+          draft: true
+          files: release-artifacts/*/*
+
+  # ===================================================================
+  # Job 3: Build and Push Docker Image
+  # ===================================================================
+  build_and_push_docker:
+    name: Build and Push Docker Image
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.task_to_run == 'docker')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: Prepare release assets
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+            image=moby/buildkit:v0.12.5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine Version Tag
+        id: get_version
         run: |
-          mkdir -p release
-          # Copy all archive files from artifacts directory
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release/ \;
-          echo "Release assets:"
-          ls -lah release/
-          echo ""
-          echo "File count: $(ls -1 release/ | wc -l)"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ -z "${{ github.event.inputs.tag_name }}" ]; then
+              echo "Error: The 'tag_name' input is required when running the '${{ github.event.inputs.task_to_run }}' task manually."
+              exit 1
+            fi
+            echo "TAG=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          files: release/*
-          draft: false
+          images: ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.get_version.outputs.TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.get_version.outputs.TAG }}
+            type=semver,pattern={{major}},value=${{ steps.get_version.outputs.TAG }}
+            type=raw,value=latest,enable=${{ startsWith(steps.get_version.outputs.TAG, 'v') }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha,scope=buildx-chef
+            type=gha,scope=buildx-deps-${{ hashFiles('**/Cargo.lock') }}
+            type=gha,scope=buildx-build
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=buildx-chef
+            type=gha,mode=max,scope=buildx-deps-${{ hashFiles('**/Cargo.lock') }}
+            type=gha,mode=max,scope=buildx-build
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}:buildcache,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+          provenance: false

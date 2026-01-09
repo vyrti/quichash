@@ -653,9 +653,10 @@ fn handle_compare_command(
 
         // Display summary to stdout
         println!("Comparison report written to: {}", output_path.display());
+        println!("\nDatabases:");
+        println!("  DB1: {} ({} files)", report.db1_info.path.display(), report.db1_total_files);
+        println!("  DB2: {} ({} files)", report.db2_info.path.display(), report.db2_total_files);
         println!("\nSummary:");
-        println!("  Database 1: {} files", report.db1_total_files);
-        println!("  Database 2: {} files", report.db2_total_files);
         println!("  Unchanged:  {} files", report.unchanged_files);
         println!("  Changed:    {} files", report.changed_files.len());
         println!("  Moved:      {} files", report.moved_files.len());

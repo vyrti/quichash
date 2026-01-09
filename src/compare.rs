@@ -3,8 +3,18 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use crate::database::{DatabaseHandler, DatabaseEntry};
+use crate::database::{DatabaseHandler, DatabaseEntry, DatabaseFormat};
 use crate::error::HashUtilityError;
+
+/// Metadata about a database file
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DatabaseInfo {
+    pub path: PathBuf,
+    pub format: String,
+    pub size_bytes: u64,
+    pub file_count: usize,
+    pub modified: Option<String>,
+}
 
 /// Result of comparing a single file between two databases
 #[derive(Debug, Clone, serde::Serialize)]
@@ -33,6 +43,8 @@ pub struct DuplicateGroup {
 /// Comprehensive comparison report between two databases
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CompareReport {
+    pub db1_info: DatabaseInfo,
+    pub db2_info: DatabaseInfo,
     pub db1_total_files: usize,
     pub db2_total_files: usize,
     pub unchanged_files: usize,
@@ -42,6 +54,23 @@ pub struct CompareReport {
     pub added_files: Vec<PathBuf>,
     pub duplicates_db1: Vec<DuplicateGroup>,
     pub duplicates_db2: Vec<DuplicateGroup>,
+}
+
+/// Format bytes as human-readable size
+fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
 }
 
 impl CompareReport {
@@ -126,10 +155,28 @@ impl CompareReport {
 
         output.push_str("\n=== Database Comparison Report ===\n\n");
 
+        // Database info section
+        output.push_str("Databases:\n");
+        output.push_str(&format!("  DB1: {}\n", self.db1_info.path.display()));
+        output.push_str(&format!("       Format: {}, Size: {}, Files: {}\n",
+            self.db1_info.format,
+            format_size(self.db1_info.size_bytes),
+            self.db1_info.file_count));
+        if let Some(ref modified) = self.db1_info.modified {
+            output.push_str(&format!("       Modified: {}\n", modified));
+        }
+        output.push_str(&format!("  DB2: {}\n", self.db2_info.path.display()));
+        output.push_str(&format!("       Format: {}, Size: {}, Files: {}\n",
+            self.db2_info.format,
+            format_size(self.db2_info.size_bytes),
+            self.db2_info.file_count));
+        if let Some(ref modified) = self.db2_info.modified {
+            output.push_str(&format!("       Modified: {}\n", modified));
+        }
+        output.push('\n');
+
         // Summary section
         output.push_str("Summary:\n");
-        output.push_str(&format!("  Database 1: {} files\n", self.db1_total_files));
-        output.push_str(&format!("  Database 2: {} files\n", self.db2_total_files));
         output.push_str(&format!("  Unchanged:  {} files\n", self.unchanged_files));
         output.push_str(&format!("  Changed:    {} files\n", self.changed_files.len()));
         output.push_str(&format!("  Moved:      {} files\n", self.moved_files.len()));
@@ -249,6 +296,7 @@ impl CompareReport {
         #[derive(serde::Serialize)]
         struct JsonOutput {
             metadata: Metadata,
+            databases: Databases,
             summary: Summary,
             unchanged_files: usize,
             changed_files: Vec<ChangedFileJson>,
@@ -263,9 +311,22 @@ impl CompareReport {
         }
 
         #[derive(serde::Serialize)]
+        struct Databases {
+            db1: DatabaseInfoJson,
+            db2: DatabaseInfoJson,
+        }
+
+        #[derive(serde::Serialize)]
+        struct DatabaseInfoJson {
+            path: String,
+            format: String,
+            size_bytes: u64,
+            file_count: usize,
+            modified: Option<String>,
+        }
+
+        #[derive(serde::Serialize)]
         struct Summary {
-            db1_total_files: usize,
-            db2_total_files: usize,
             unchanged_count: usize,
             changed_count: usize,
             moved_count: usize,
@@ -291,9 +352,23 @@ impl CompareReport {
             metadata: Metadata {
                 timestamp: chrono::Utc::now().to_rfc3339(),
             },
+            databases: Databases {
+                db1: DatabaseInfoJson {
+                    path: self.db1_info.path.display().to_string(),
+                    format: self.db1_info.format.clone(),
+                    size_bytes: self.db1_info.size_bytes,
+                    file_count: self.db1_info.file_count,
+                    modified: self.db1_info.modified.clone(),
+                },
+                db2: DatabaseInfoJson {
+                    path: self.db2_info.path.display().to_string(),
+                    format: self.db2_info.format.clone(),
+                    size_bytes: self.db2_info.size_bytes,
+                    file_count: self.db2_info.file_count,
+                    modified: self.db2_info.modified.clone(),
+                },
+            },
             summary: Summary {
-                db1_total_files: self.db1_total_files,
-                db2_total_files: self.db2_total_files,
                 unchanged_count: self.unchanged_files,
                 changed_count: self.changed_files.len(),
                 moved_count: self.moved_files.len(),
@@ -344,6 +419,10 @@ impl CompareEngine {
         database1: &Path,
         database2: &Path,
     ) -> Result<CompareReport, HashUtilityError> {
+        // Gather database metadata
+        let db1_info = Self::get_database_info(database1)?;
+        let db2_info = Self::get_database_info(database2)?;
+
         // Load both databases
         let db1 = DatabaseHandler::read_database(database1)?;
         let db2 = DatabaseHandler::read_database(database2)?;
@@ -448,7 +527,19 @@ impl CompareEngine {
         removed_files.sort();
         added_files.sort();
 
+        // Update file counts in database info
+        let db1_info = DatabaseInfo {
+            file_count: db1.len(),
+            ..db1_info
+        };
+        let db2_info = DatabaseInfo {
+            file_count: db2.len(),
+            ..db2_info
+        };
+
         Ok(CompareReport {
+            db1_info,
+            db2_info,
             db1_total_files: db1.len(),
             db2_total_files: db2.len(),
             unchanged_files: unchanged_count,
@@ -458,6 +549,37 @@ impl CompareEngine {
             added_files,
             duplicates_db1,
             duplicates_db2,
+        })
+    }
+
+    /// Get metadata about a database file
+    fn get_database_info(path: &Path) -> Result<DatabaseInfo, HashUtilityError> {
+        use std::fs;
+
+        // Get file metadata
+        let metadata = fs::metadata(path).map_err(|e| {
+            HashUtilityError::from_io_error(e, "reading database metadata", Some(path.to_path_buf()))
+        })?;
+
+        // Detect format
+        let format = DatabaseHandler::detect_format(path)?;
+        let format_str = match format {
+            DatabaseFormat::Standard => "standard",
+            DatabaseFormat::Hashdeep => "hashdeep",
+        };
+
+        // Get modification time
+        let modified = metadata.modified().ok().map(|time| {
+            let datetime: chrono::DateTime<chrono::Utc> = time.into();
+            datetime.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+        });
+
+        Ok(DatabaseInfo {
+            path: path.to_path_buf(),
+            format: format_str.to_string(),
+            size_bytes: metadata.len(),
+            file_count: 0, // Will be updated after reading
+            modified,
         })
     }
     
