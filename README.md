@@ -370,3 +370,40 @@ hash verify -b "*.db" -d "data/*"            # All .db files against all data di
 | .hashignore not working | Check file location: `/path/to/dir/.hashignore` |
 | Wildcard pattern not matching | Ensure pattern is quoted (e.g., `"*.txt"` not `*.txt`) |
 | No files match pattern | Check pattern syntax and file locations |
+
+## Contributing
+
+We welcome contributions to hash-rs! To contribute, you must certify that you have the right to submit your contribution and agree to license it under the project's dual MIT/Apache-2.0 license.
+
+### Developer Certificate of Origin (DCO)
+
+hash-rs uses the [Developer Certificate of Origin (DCO)](https://developercertificate.org/) process. This is a lightweight way for contributors to certify that they wrote or otherwise have the right to submit code or documentation to an open source project.
+
+#### Inbound = Outbound License
+
+All contributions to hash-rs are made under the same dual MIT/Apache-2.0 license as the project itself. By signing off on your commits, you agree that your contributions will be licensed under these same terms, with no additional restrictions.
+
+#### How to Sign Off Commits
+
+Contributors sign-off that they adhere to these requirements by adding a Signed-off-by line to commit messages.
+
+```
+This is my commit message
+
+Signed-off-by: Random J Developer <random@developer.example.org>
+```
+
+Git even has a `-s` command line option to append this automatically to your commit message:
+
+```bash
+$ git commit -s -m 'This is my commit message'
+```
+
+## License
+
+Hash-rs is dual-licensed under either:
+
+- **MIT License** ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+
+at your option.
