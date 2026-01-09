@@ -631,9 +631,7 @@ fn handle_compare_command(
             })?
         }
         "hashdeep" => {
-            // For hashdeep format, we'll use plain text format
-            // (hashdeep doesn't have a specific comparison report format)
-            report.to_plain_text()
+            report.to_hashdeep()
         }
         _ => {
             return Err(HashUtilityError::InvalidArguments {

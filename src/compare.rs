@@ -171,6 +171,62 @@ impl CompareReport {
         output
     }
     
+    /// Format the comparison report in hashdeep audit style
+    ///
+    /// This format matches hashdeep's audit mode (-a -vvv) output style:
+    /// - Summary header with pass/fail status
+    /// - Category counts
+    /// - Detailed file listings with -vvv style
+    pub fn to_hashdeep(&self) -> String {
+        let mut output = String::new();
+
+        // Audit result header (like hashdeep)
+        let audit_passed = self.changed_files.is_empty()
+            && self.removed_files.is_empty()
+            && self.added_files.is_empty();
+
+        if audit_passed {
+            output.push_str("hashdeep: Audit passed\n");
+        } else {
+            output.push_str("hashdeep: Audit failed\n");
+        }
+
+        // Summary counts (like hashdeep -vv)
+        output.push_str(&format!("          Files matched: {}\n", self.unchanged_files));
+        output.push_str(&format!("         Files modified: {}\n", self.changed_files.len()));
+        output.push_str(&format!("        New files found: {}\n", self.added_files.len()));
+        output.push_str(&format!("  Known files not found: {}\n", self.removed_files.len()));
+
+        // Detailed listings (like hashdeep -vvv)
+        if !self.changed_files.is_empty() {
+            output.push_str("\nModified files:\n");
+            for changed in &self.changed_files {
+                output.push_str(&format!(
+                    "  {}\n    Known hash:    {}\n    Computed hash: {}\n",
+                    changed.path.display(),
+                    changed.hash_db1,
+                    changed.hash_db2
+                ));
+            }
+        }
+
+        if !self.added_files.is_empty() {
+            output.push_str("\nNew files:\n");
+            for path in &self.added_files {
+                output.push_str(&format!("  {}\n", path.display()));
+            }
+        }
+
+        if !self.removed_files.is_empty() {
+            output.push_str("\nKnown files not found:\n");
+            for path in &self.removed_files {
+                output.push_str(&format!("  {}\n", path.display()));
+            }
+        }
+
+        output
+    }
+
     /// Format the comparison report as JSON string
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         #[derive(serde::Serialize)]
@@ -759,6 +815,81 @@ mod tests {
             report.db2_total_files
         );
         
+        fs::remove_file(db1_path).unwrap();
+        fs::remove_file(db2_path).unwrap();
+    }
+
+    #[test]
+    fn test_to_hashdeep_format() {
+        let db1_path = "test_hashdeep_format_db1.txt";
+        let db2_path = "test_hashdeep_format_db2.txt";
+
+        let content1 = "hash1  sha256  normal  unchanged.txt\n\
+                        hash_old  sha256  normal  changed.txt\n\
+                        hash_removed  sha256  normal  removed.txt\n";
+
+        let content2 = "hash1  sha256  normal  unchanged.txt\n\
+                        hash_new  sha256  normal  changed.txt\n\
+                        hash_added  sha256  normal  added.txt\n";
+
+        fs::write(db1_path, content1).unwrap();
+        fs::write(db2_path, content2).unwrap();
+
+        let engine = CompareEngine::new();
+        let report = engine.compare(Path::new(db1_path), Path::new(db2_path)).unwrap();
+
+        let hashdeep_output = report.to_hashdeep();
+
+        // Verify audit failed header
+        assert!(hashdeep_output.contains("hashdeep: Audit failed"));
+
+        // Verify summary counts
+        assert!(hashdeep_output.contains("Files matched: 1"));
+        assert!(hashdeep_output.contains("Files modified: 1"));
+        assert!(hashdeep_output.contains("New files found: 1"));
+        assert!(hashdeep_output.contains("Known files not found: 1"));
+
+        // Verify modified file entry with both hashes
+        assert!(hashdeep_output.contains("Modified files:"));
+        assert!(hashdeep_output.contains("changed.txt"));
+        assert!(hashdeep_output.contains("Known hash:"));
+        assert!(hashdeep_output.contains("hash_old"));
+        assert!(hashdeep_output.contains("Computed hash:"));
+        assert!(hashdeep_output.contains("hash_new"));
+
+        // Verify new file entry
+        assert!(hashdeep_output.contains("New files:"));
+        assert!(hashdeep_output.contains("added.txt"));
+
+        // Verify not found file entry
+        assert!(hashdeep_output.contains("Known files not found:"));
+        assert!(hashdeep_output.contains("removed.txt"));
+
+        fs::remove_file(db1_path).unwrap();
+        fs::remove_file(db2_path).unwrap();
+    }
+
+    #[test]
+    fn test_to_hashdeep_format_audit_passed() {
+        let db1_path = "test_hashdeep_audit_passed_db1.txt";
+        let db2_path = "test_hashdeep_audit_passed_db2.txt";
+
+        // Identical databases should result in audit passed
+        let content = "hash1  sha256  normal  file1.txt\n\
+                       hash2  sha256  normal  file2.txt\n";
+
+        fs::write(db1_path, content).unwrap();
+        fs::write(db2_path, content).unwrap();
+
+        let engine = CompareEngine::new();
+        let report = engine.compare(Path::new(db1_path), Path::new(db2_path)).unwrap();
+
+        let hashdeep_output = report.to_hashdeep();
+
+        // Verify audit passed
+        assert!(hashdeep_output.contains("hashdeep: Audit passed"));
+        assert!(!hashdeep_output.contains("hashdeep: Audit failed"));
+
         fs::remove_file(db1_path).unwrap();
         fs::remove_file(db2_path).unwrap();
     }

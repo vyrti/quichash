@@ -26,7 +26,7 @@ use crate::error::HashUtilityError;
     hash scan -d /path/to/dir -b hashes.txt --json          # JSON output\n  \
     hash verify -b hashes.txt -d /path/to/dir               # parallel by default\n  \
     hash verify -b hashes.txt -d /path/to/dir --hdd         # sequential for old HDDs\n  \
-    hash compare db1.txt db2.txt                            # compare two databases\n  \
+    hash compare db1.txt db2.txt                              # compare two databases\n  \
     hash compare db1.txt db2.txt -b report.txt --format json  # JSON output\n  \
     hash dedup -d /path/to/dir                              # find duplicates\n  \
     hash dedup -d /path/to/dir --fast --json                # fast mode with JSON output\n  \
@@ -814,7 +814,7 @@ mod tests {
     fn test_parse_compare_command_with_hashdeep_format() {
         let args = vec!["hash", "compare", "db1.txt", "db2.txt", "--format", "hashdeep"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Some(Command::Compare { database1, database2, output, format }) => {
                 assert_eq!(database1, PathBuf::from("db1.txt"));
