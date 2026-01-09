@@ -70,6 +70,16 @@ jobs:
             os-arch: freebsd-x86_64
             asset_ext: .tar.gz
             cross: true
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            os-arch: linux-musl-x86_64
+            asset_ext: .tar.gz
+            cross: true
+          - runner: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            os-arch: linux-musl-arm64
+            asset_ext: .tar.gz
+            cross: true
 
     steps:
       - name: Checkout code
