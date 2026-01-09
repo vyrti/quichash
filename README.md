@@ -13,7 +13,8 @@ High-performance cryptographic hash utility with SIMD optimization.
 - **Wildcard Patterns**: Support for `*`, `?`, and `[...]` patterns in file/directory arguments
 - **Directory Scanning**: Recursive hashing with parallel processing by default
 - **Verification**: Compare hashes against stored database
-- **Database Comparison**: Compare two databases to identify changes, duplicates, and differences
+- **Database Comparison**: Compare two databases to identify changes, moves, and differences
+- **Database Analysis**: Analyze database statistics, duplicates, and potential space savings
 - **Deduplication**: Find and report duplicate files based on hash comparison
 - **.hashignore**: Exclude files using gitignore patterns
 - **Formats**: Standard, hashdeep, JSON
@@ -42,6 +43,9 @@ cat myfile.txt | ./target/release/hash
 
 # Verify
 ./target/release/hash verify -b hashes.db -d ./my_dir
+
+# Analyze database
+./target/release/hash analyze -d hashes.db
 
 # List algorithms
 ./target/release/hash list
@@ -147,12 +151,13 @@ Output shows: Matches, Mismatches, Missing files, New files
 
 ### Compare Databases
 
-Compare two hash databases to identify changes, duplicates, and differences:
+Compare two hash databases to identify changes, moves, and differences:
 
 ```bash
 hash compare db1.txt db2.txt                          # Compare two databases
 hash compare db1.txt db2.txt -b report.txt            # Save report to file
 hash compare db1.txt db2.txt --format json            # JSON output
+hash compare db1.txt db2.txt --format hashdeep        # Hashdeep audit format
 hash compare db1.txt.xz db2.txt.xz                    # Compare compressed databases
 hash compare db1.txt db2.txt.xz                       # Mix compressed and plain
 ```
@@ -160,9 +165,26 @@ hash compare db1.txt db2.txt.xz                       # Mix compressed and plain
 Output shows:
 - **Unchanged**: Files with same hash in both databases
 - **Changed**: Files with different hashes
+- **Moved**: Files renamed or moved (same hash, different path)
 - **Removed**: Files in DB1 but not DB2
 - **Added**: Files in DB2 but not DB1
-- **Duplicates**: Files with same hash within each database
+
+### Analyze Database
+
+Analyze a hash database to view statistics, duplicates, and potential space savings:
+
+```bash
+hash analyze -d hashes.db                             # Analyze database
+hash analyze -d hashes.db --json                      # JSON output
+hash analyze -d hashes.db -b report.txt               # Save report to file
+hash analyze -d hashes.db.xz                          # Analyze compressed database
+```
+
+Output shows:
+- **Database info**: Path, format (standard/hashdeep), size
+- **Summary**: Total files, unique hashes, algorithms used
+- **File sizes**: Total size of all files (hashdeep format only)
+- **Duplicates**: Number of duplicate groups, duplicate files, potential space savings
 
 ### Deduplicate Files
 
@@ -211,6 +233,9 @@ hash list --json                  # JSON output
 | | `DATABASE2` | Second database file (supports .xz) |
 | | `-b, --output <FILE>` | Write report to file |
 | | `--format <FMT>` | plain-text, json, or hashdeep |
+| analyze | `-d, --database <FILE>` | Database file to analyze (supports .xz) |
+| | `-b, --output <FILE>` | Write report to file |
+| | `--json` | JSON output |
 | dedup | `-d, --directory <DIR>` | Directory to scan for duplicates |
 | | `-f, --fast` | Fast mode |
 | | `-b, --output <FILE>` | Write report to file |
@@ -300,9 +325,12 @@ hash scan -d /data -b snapshot1.db
 hash scan -d /data -b snapshot2.db
 hash compare snapshot1.db snapshot2.db -b changes.txt
 
-# Find duplicates
-hash scan -d /media -b media.db
-hash compare media.db media.db                    # Compare with itself
+# Analyze database for duplicates and stats
+hash analyze -d media.db                          # View stats and duplicates
+hash analyze -d media.db --json                   # JSON output for automation
+
+# Find duplicates in directory
+hash dedup -d /media                              # Quick duplicate scan
 
 # Forensic analysis
 hash scan -d /evidence -a sha3-256 -b evidence.db

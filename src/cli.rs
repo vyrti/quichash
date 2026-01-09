@@ -153,21 +153,21 @@ pub enum Command {
     /// Compare two hash databases
     /// 
     /// Compares two hash database files to identify unchanged files, changed files,
-    /// removed files, added files, and duplicate hashes within each database.
+    /// moved files, removed files, and added files.
     /// Supports standard, hashdeep, and compressed (.xz) database formats.
     Compare {
         /// First hash database file path (supports .xz compressed files)
         #[arg(value_name = "DATABASE1")]
         database1: PathBuf,
-        
+
         /// Second hash database file path (supports .xz compressed files)
         #[arg(value_name = "DATABASE2")]
         database2: PathBuf,
-        
+
         /// Write comparison report to file instead of stdout
         #[arg(short = 'b', long = "output", value_name = "FILE")]
         output: Option<PathBuf>,
-        
+
         /// Output format: 'plain-text' (default), 'json', or 'hashdeep'
         #[arg(long = "format", value_name = "FORMAT", default_value = "plain-text")]
         format: String,
@@ -198,6 +198,25 @@ pub enum Command {
         /// Output results as JSON instead of plain text
         #[arg(long = "json")]
         json: bool,
+    },
+
+    /// Analyze a hash database and display statistics
+    ///
+    /// Displays comprehensive statistics about a hash database file including
+    /// file counts, duplicate detection, and potential space savings.
+    /// File sizes are only available for hashdeep format databases.
+    Analyze {
+        /// Hash database file path (supports .xz compressed files)
+        #[arg(short = 'd', long = "database", value_name = "FILE")]
+        database: PathBuf,
+
+        /// Output results as JSON instead of plain text
+        #[arg(long = "json")]
+        json: bool,
+
+        /// Write output to file instead of stdout
+        #[arg(short = 'b', long = "output", value_name = "FILE")]
+        output: Option<PathBuf>,
     },
 }
 

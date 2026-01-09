@@ -277,6 +277,11 @@ impl DatabaseHandler {
                 continue;
             }
             
+            // Skip comment lines (## ...) - these are part of the standard hashdeep format
+            if trimmed.starts_with('#') {
+                continue;
+            }
+
             // Parse header lines
             if trimmed.starts_with('%') {
                 // Extract algorithm information from header

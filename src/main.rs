@@ -10,6 +10,7 @@ mod ignore_handler;
 mod wildcard;
 mod compare;
 mod dedup;
+mod analyze;
 
 use cli::{parse_args, Command};
 use hash::{HashComputer, HashRegistry};
@@ -65,6 +66,9 @@ fn main() {
         }
         Some(Command::Dedup { directory, fast, output, json }) => {
             handle_dedup_command(&directory, fast, output.as_deref(), json)
+        }
+        Some(Command::Analyze { database, json, output }) => {
+            handle_analyze_command(&database, json, output.as_deref())
         }
         None => {
             // No subcommand means hash mode (default)
@@ -613,11 +617,11 @@ fn handle_compare_command(
     format: &str,
 ) -> Result<(), HashUtilityError> {
     use compare::CompareEngine;
-    
+
     // Create compare engine and run comparison
     let engine = CompareEngine::new();
     let report = engine.compare(database1, database2)?;
-    
+
     // Format output based on requested format
     let output_content = match format.to_lowercase().as_str() {
         "plain-text" | "plain" | "text" => {
@@ -639,14 +643,14 @@ fn handle_compare_command(
             });
         }
     };
-    
+
     // Write to output destination
     if let Some(output_path) = output {
         // Write to file
         std::fs::write(output_path, output_content).map_err(|e| {
             HashUtilityError::from_io_error(e, "writing output", Some(output_path.to_path_buf()))
         })?;
-        
+
         // Display summary to stdout
         println!("Comparison report written to: {}", output_path.display());
         println!("\nSummary:");
@@ -654,15 +658,14 @@ fn handle_compare_command(
         println!("  Database 2: {} files", report.db2_total_files);
         println!("  Unchanged:  {} files", report.unchanged_files);
         println!("  Changed:    {} files", report.changed_files.len());
+        println!("  Moved:      {} files", report.moved_files.len());
         println!("  Removed:    {} files", report.removed_files.len());
         println!("  Added:      {} files", report.added_files.len());
-        println!("  Duplicates in DB1: {} groups", report.duplicates_db1.len());
-        println!("  Duplicates in DB2: {} groups", report.duplicates_db2.len());
     } else {
         // Write to stdout
         print!("{}", output_content);
     }
-    
+
     Ok(())
 }
 
@@ -763,14 +766,65 @@ fn handle_dedup_command(
         println!("  Files scanned:     {}", report.stats.files_scanned);
         println!("  Duplicate groups:  {}", report.stats.duplicate_groups);
         println!("  Duplicate files:   {}", report.stats.duplicate_files);
-        println!("  Wasted space:      {} ({:.2} MB)", 
-            report.stats.wasted_space, 
+        println!("  Wasted space:      {} ({:.2} MB)",
+            report.stats.wasted_space,
             report.stats.wasted_space as f64 / 1_048_576.0
         );
     } else {
         // Write to stdout
         print!("{}", output_content);
     }
-    
+
+    Ok(())
+}
+
+/// Handle the analyze command: analyze a hash database and display statistics
+fn handle_analyze_command(
+    database: &Path,
+    json: bool,
+    output: Option<&Path>,
+) -> Result<(), HashUtilityError> {
+    use analyze::AnalyzeEngine;
+
+    // Create analyze engine and run analysis
+    let engine = AnalyzeEngine::new();
+    let report = engine.analyze(database)?;
+
+    // Format output based on json flag
+    let output_content = if json {
+        report.to_json().map_err(|e| {
+            HashUtilityError::InvalidArguments {
+                message: format!("Failed to serialize JSON: {}", e),
+            }
+        })?
+    } else {
+        report.to_plain_text()
+    };
+
+    // Write to output destination
+    if let Some(output_path) = output {
+        // Write to file
+        std::fs::write(output_path, output_content).map_err(|e| {
+            HashUtilityError::from_io_error(e, "writing output", Some(output_path.to_path_buf()))
+        })?;
+
+        // Display summary to stdout
+        println!("Analysis report written to: {}", output_path.display());
+        println!("\nSummary:");
+        println!("  Total files:        {}", report.stats.total_files);
+        println!("  Unique hashes:      {}", report.stats.unique_hashes);
+        println!("  Duplicate groups:   {}", report.stats.duplicate_groups);
+        println!("  Duplicate files:    {}", report.stats.duplicate_files);
+        if let Some(savings) = report.stats.potential_savings {
+            println!("  Potential savings:  {} ({:.2} MB)",
+                savings,
+                savings as f64 / 1_048_576.0
+            );
+        }
+    } else {
+        // Write to stdout
+        print!("{}", output_content);
+    }
+
     Ok(())
 }

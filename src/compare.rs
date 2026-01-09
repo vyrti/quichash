@@ -14,6 +14,14 @@ pub struct ChangedFile {
     pub hash_db2: String,
 }
 
+/// A file that was moved/renamed between databases
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MovedFile {
+    pub from_path: PathBuf,
+    pub to_path: PathBuf,
+    pub hash: String,
+}
+
 /// Group of files with the same hash (duplicates)
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DuplicateGroup {
@@ -29,6 +37,7 @@ pub struct CompareReport {
     pub db2_total_files: usize,
     pub unchanged_files: usize,
     pub changed_files: Vec<ChangedFile>,
+    pub moved_files: Vec<MovedFile>,
     pub removed_files: Vec<PathBuf>,
     pub added_files: Vec<PathBuf>,
     pub duplicates_db1: Vec<DuplicateGroup>,
@@ -39,18 +48,19 @@ impl CompareReport {
     /// Display the comparison report in plain text format
     pub fn display(&self) {
         println!("\n=== Database Comparison Report ===\n");
-        
+
         // Summary section
         println!("Summary:");
         println!("  Database 1: {} files", self.db1_total_files);
         println!("  Database 2: {} files", self.db2_total_files);
         println!("  Unchanged:  {} files", self.unchanged_files);
         println!("  Changed:    {} files", self.changed_files.len());
+        println!("  Moved:      {} files", self.moved_files.len());
         println!("  Removed:    {} files", self.removed_files.len());
         println!("  Added:      {} files", self.added_files.len());
         println!("  Duplicates in DB1: {} groups", self.duplicates_db1.len());
         println!("  Duplicates in DB2: {} groups", self.duplicates_db2.len());
-        
+
         // Changed files section
         if !self.changed_files.is_empty() {
             println!("\nChanged Files:");
@@ -60,7 +70,15 @@ impl CompareReport {
                 println!("    DB2: {}", changed.hash_db2);
             }
         }
-        
+
+        // Moved files section
+        if !self.moved_files.is_empty() {
+            println!("\nMoved Files:");
+            for moved in &self.moved_files {
+                println!("  {} -> {}", moved.from_path.display(), moved.to_path.display());
+            }
+        }
+
         // Removed files section
         if !self.removed_files.is_empty() {
             println!("\nRemoved Files (in DB1 but not DB2):");
@@ -68,7 +86,7 @@ impl CompareReport {
                 println!("  {}", path.display());
             }
         }
-        
+
         // Added files section
         if !self.added_files.is_empty() {
             println!("\nAdded Files (in DB2 but not DB1):");
@@ -76,7 +94,7 @@ impl CompareReport {
                 println!("  {}", path.display());
             }
         }
-        
+
         // Duplicates in DB1
         if !self.duplicates_db1.is_empty() {
             println!("\nDuplicates in Database 1:");
@@ -87,7 +105,7 @@ impl CompareReport {
                 }
             }
         }
-        
+
         // Duplicates in DB2
         if !self.duplicates_db2.is_empty() {
             println!("\nDuplicates in Database 2:");
@@ -98,27 +116,26 @@ impl CompareReport {
                 }
             }
         }
-        
+
         println!();
     }
     
     /// Format the comparison report as plain text string
     pub fn to_plain_text(&self) -> String {
         let mut output = String::new();
-        
+
         output.push_str("\n=== Database Comparison Report ===\n\n");
-        
+
         // Summary section
         output.push_str("Summary:\n");
         output.push_str(&format!("  Database 1: {} files\n", self.db1_total_files));
         output.push_str(&format!("  Database 2: {} files\n", self.db2_total_files));
         output.push_str(&format!("  Unchanged:  {} files\n", self.unchanged_files));
         output.push_str(&format!("  Changed:    {} files\n", self.changed_files.len()));
+        output.push_str(&format!("  Moved:      {} files\n", self.moved_files.len()));
         output.push_str(&format!("  Removed:    {} files\n", self.removed_files.len()));
         output.push_str(&format!("  Added:      {} files\n", self.added_files.len()));
-        output.push_str(&format!("  Duplicates in DB1: {} groups\n", self.duplicates_db1.len()));
-        output.push_str(&format!("  Duplicates in DB2: {} groups\n", self.duplicates_db2.len()));
-        
+
         // Changed files section
         if !self.changed_files.is_empty() {
             output.push_str("\nChanged Files:\n");
@@ -128,7 +145,15 @@ impl CompareReport {
                 output.push_str(&format!("    DB2: {}\n", changed.hash_db2));
             }
         }
-        
+
+        // Moved files section
+        if !self.moved_files.is_empty() {
+            output.push_str("\nMoved Files:\n");
+            for moved in &self.moved_files {
+                output.push_str(&format!("  {} -> {}\n", moved.from_path.display(), moved.to_path.display()));
+            }
+        }
+
         // Removed files section
         if !self.removed_files.is_empty() {
             output.push_str("\nRemoved Files (in DB1 but not DB2):\n");
@@ -136,7 +161,7 @@ impl CompareReport {
                 output.push_str(&format!("  {}\n", path.display()));
             }
         }
-        
+
         // Added files section
         if !self.added_files.is_empty() {
             output.push_str("\nAdded Files (in DB2 but not DB1):\n");
@@ -144,29 +169,7 @@ impl CompareReport {
                 output.push_str(&format!("  {}\n", path.display()));
             }
         }
-        
-        // Duplicates in DB1
-        if !self.duplicates_db1.is_empty() {
-            output.push_str("\nDuplicates in Database 1:\n");
-            for group in &self.duplicates_db1 {
-                output.push_str(&format!("  Hash: {} ({} files)\n", group.hash, group.count));
-                for path in &group.paths {
-                    output.push_str(&format!("    {}\n", path.display()));
-                }
-            }
-        }
-        
-        // Duplicates in DB2
-        if !self.duplicates_db2.is_empty() {
-            output.push_str("\nDuplicates in Database 2:\n");
-            for group in &self.duplicates_db2 {
-                output.push_str(&format!("  Hash: {} ({} files)\n", group.hash, group.count));
-                for path in &group.paths {
-                    output.push_str(&format!("    {}\n", path.display()));
-                }
-            }
-        }
-        
+
         output.push('\n');
         output
     }
@@ -182,6 +185,7 @@ impl CompareReport {
 
         // Audit result header (like hashdeep)
         let audit_passed = self.changed_files.is_empty()
+            && self.moved_files.is_empty()
             && self.removed_files.is_empty()
             && self.added_files.is_empty();
 
@@ -194,6 +198,7 @@ impl CompareReport {
         // Summary counts (like hashdeep -vv)
         output.push_str(&format!("          Files matched: {}\n", self.unchanged_files));
         output.push_str(&format!("         Files modified: {}\n", self.changed_files.len()));
+        output.push_str(&format!("            Files moved: {}\n", self.moved_files.len()));
         output.push_str(&format!("        New files found: {}\n", self.added_files.len()));
         output.push_str(&format!("  Known files not found: {}\n", self.removed_files.len()));
 
@@ -206,6 +211,18 @@ impl CompareReport {
                     changed.path.display(),
                     changed.hash_db1,
                     changed.hash_db2
+                ));
+            }
+        }
+
+        // Moved files - hashdeep style "Moved from X"
+        if !self.moved_files.is_empty() {
+            output.push_str("\nMoved files:\n");
+            for moved in &self.moved_files {
+                output.push_str(&format!(
+                    "  {}: Moved from {}\n",
+                    moved.to_path.display(),
+                    moved.from_path.display()
                 ));
             }
         }
@@ -235,43 +252,41 @@ impl CompareReport {
             summary: Summary,
             unchanged_files: usize,
             changed_files: Vec<ChangedFileJson>,
+            moved_files: Vec<MovedFileJson>,
             removed_files: Vec<String>,
             added_files: Vec<String>,
-            duplicates_db1: Vec<DuplicateGroupJson>,
-            duplicates_db2: Vec<DuplicateGroupJson>,
         }
-        
+
         #[derive(serde::Serialize)]
         struct Metadata {
             timestamp: String,
         }
-        
+
         #[derive(serde::Serialize)]
         struct Summary {
             db1_total_files: usize,
             db2_total_files: usize,
             unchanged_count: usize,
             changed_count: usize,
+            moved_count: usize,
             removed_count: usize,
             added_count: usize,
-            duplicates_db1_count: usize,
-            duplicates_db2_count: usize,
         }
-        
+
         #[derive(serde::Serialize)]
         struct ChangedFileJson {
             path: String,
             hash_db1: String,
             hash_db2: String,
         }
-        
+
         #[derive(serde::Serialize)]
-        struct DuplicateGroupJson {
+        struct MovedFileJson {
+            from_path: String,
+            to_path: String,
             hash: String,
-            count: usize,
-            paths: Vec<String>,
         }
-        
+
         let output = JsonOutput {
             metadata: Metadata {
                 timestamp: chrono::Utc::now().to_rfc3339(),
@@ -281,10 +296,9 @@ impl CompareReport {
                 db2_total_files: self.db2_total_files,
                 unchanged_count: self.unchanged_files,
                 changed_count: self.changed_files.len(),
+                moved_count: self.moved_files.len(),
                 removed_count: self.removed_files.len(),
                 added_count: self.added_files.len(),
-                duplicates_db1_count: self.duplicates_db1.len(),
-                duplicates_db2_count: self.duplicates_db2.len(),
             },
             unchanged_files: self.unchanged_files,
             changed_files: self.changed_files.iter().map(|cf| ChangedFileJson {
@@ -292,18 +306,13 @@ impl CompareReport {
                 hash_db1: cf.hash_db1.clone(),
                 hash_db2: cf.hash_db2.clone(),
             }).collect(),
+            moved_files: self.moved_files.iter().map(|mf| MovedFileJson {
+                from_path: mf.from_path.display().to_string(),
+                to_path: mf.to_path.display().to_string(),
+                hash: mf.hash.clone(),
+            }).collect(),
             removed_files: self.removed_files.iter().map(|p| p.display().to_string()).collect(),
             added_files: self.added_files.iter().map(|p| p.display().to_string()).collect(),
-            duplicates_db1: self.duplicates_db1.iter().map(|dg| DuplicateGroupJson {
-                hash: dg.hash.clone(),
-                count: dg.count,
-                paths: dg.paths.iter().map(|p| p.display().to_string()).collect(),
-            }).collect(),
-            duplicates_db2: self.duplicates_db2.iter().map(|dg| DuplicateGroupJson {
-                hash: dg.hash.clone(),
-                count: dg.count,
-                paths: dg.paths.iter().map(|p| p.display().to_string()).collect(),
-            }).collect(),
         };
         
         serde_json::to_string_pretty(&output)
@@ -354,7 +363,7 @@ impl CompareEngine {
         let mut changed_files = Vec::new();
         let mut removed_files = Vec::new();
         let mut added_files = Vec::new();
-        
+
         for path in all_paths {
             match (db1.get(&path), db2.get(&path)) {
                 (Some(entry1), Some(entry2)) => {
@@ -372,11 +381,11 @@ impl CompareEngine {
                     }
                 }
                 (Some(_), None) => {
-                    // File exists in DB1 but not DB2 - removed
+                    // File exists in DB1 but not DB2 - potentially removed or moved
                     removed_files.push(path.clone());
                 }
                 (None, Some(_)) => {
-                    // File exists in DB2 but not DB1 - added
+                    // File exists in DB2 but not DB1 - potentially added or moved
                     added_files.push(path.clone());
                 }
                 (None, None) => {
@@ -385,17 +394,66 @@ impl CompareEngine {
                 }
             }
         }
-        
+
+        // Detect moved files: files with same hash but different paths
+        // Build hash-to-path map for removed files (from DB1)
+        let mut removed_by_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        for path in &removed_files {
+            if let Some(entry) = db1.get(path) {
+                removed_by_hash
+                    .entry(entry.hash.clone())
+                    .or_default()
+                    .push(path.clone());
+            }
+        }
+
+        // Build hash-to-path map for added files (from DB2)
+        let mut added_by_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        for path in &added_files {
+            if let Some(entry) = db2.get(path) {
+                added_by_hash
+                    .entry(entry.hash.clone())
+                    .or_default()
+                    .push(path.clone());
+            }
+        }
+
+        // Find moves: same hash in both removed and added
+        let mut moved_files = Vec::new();
+        let mut moved_from_paths: HashSet<PathBuf> = HashSet::new();
+        let mut moved_to_paths: HashSet<PathBuf> = HashSet::new();
+
+        for (hash, from_paths) in &removed_by_hash {
+            if let Some(to_paths) = added_by_hash.get(hash) {
+                // Match up files with same hash - pair them 1:1
+                for (from_path, to_path) in from_paths.iter().zip(to_paths.iter()) {
+                    moved_files.push(MovedFile {
+                        from_path: from_path.clone(),
+                        to_path: to_path.clone(),
+                        hash: hash.clone(),
+                    });
+                    moved_from_paths.insert(from_path.clone());
+                    moved_to_paths.insert(to_path.clone());
+                }
+            }
+        }
+
+        // Remove moved files from removed and added lists
+        removed_files.retain(|p| !moved_from_paths.contains(p));
+        added_files.retain(|p| !moved_to_paths.contains(p));
+
         // Sort results for consistent output
         changed_files.sort_by(|a, b| a.path.cmp(&b.path));
+        moved_files.sort_by(|a, b| a.from_path.cmp(&b.from_path));
         removed_files.sort();
         added_files.sort();
-        
+
         Ok(CompareReport {
             db1_total_files: db1.len(),
             db2_total_files: db2.len(),
             unchanged_files: unchanged_count,
             changed_files,
+            moved_files,
             removed_files,
             added_files,
             duplicates_db1,
