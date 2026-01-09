@@ -1,5 +1,5 @@
 [package]
-name = "hash-rs"
+name = "quichash"
 version = "0.0.17"
 edition = "2021"
 description = "High-performance cryptographic hash utility with SIMD optimization"
