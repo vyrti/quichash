@@ -21,34 +21,44 @@ High-performance cryptographic hash utility with SIMD optimization.
 - **Compression**: LZMA compression for databases
 - **Cross-Platform**: Linux, macOS, Windows, FreeBSD
 
-## Quick Start
+## Installation
+
+```bash
+cargo install quichash
+```
+
+Or build from source:
 
 ```bash
 cargo build --release
+```
 
+## Quick Start
+
+```bash
 # Hash a file (uses blake3 by default)
-./target/release/hash myfile.txt
+hash myfile.txt
 
 # Hash text
-./target/release/hash --text "hello world"
+hash --text "hello world"
 
 # Hash from stdin
-cat myfile.txt | ./target/release/hash
+cat myfile.txt | hash
 
 # Scan directory (parallel by default)
-./target/release/hash scan -d ./my_dir -b hashes.db
+hash scan -d ./my_dir -b hashes.db
 
 # Scan on old HDD (sequential)
-./target/release/hash scan -d ./my_dir -b hashes.db --hdd
+hash scan -d ./my_dir -b hashes.db --hdd
 
 # Verify
-./target/release/hash verify -b hashes.db -d ./my_dir
+hash verify -b hashes.db -d ./my_dir
 
 # Analyze database
-./target/release/hash analyze -d hashes.db
+hash analyze -d hashes.db
 
 # List algorithms
-./target/release/hash list
+hash list
 ```
 
 ## Usage
