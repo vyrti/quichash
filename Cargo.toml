@@ -9,6 +9,7 @@ homepage = "https://github.com/vyrti/hash-rs"
 readme = "README.md"
 keywords = ["hash", "blake3", "sha256", "checksum", "crypto"]
 categories = ["command-line-utilities", "cryptography"]
+exclude = [".vscode/", ".github/", ".gitignore", "CLAUDE.md"]
 
 [[bin]]
 name = "hash"
