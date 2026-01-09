@@ -99,7 +99,7 @@ jobs:
 
       - name: Install cross (for FreeBSD)
         if: matrix.cross == true
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --force --git https://github.com/cross-rs/cross
 
       - name: Build project
         run: |
